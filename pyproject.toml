@@ -1,0 +1,63 @@
+[project]
+name = "seeding-cms"
+version = "0.1.0"
+description = "CMS seeding da kenh - giai doan 01: pipeline chay thong tren Reddit"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "arq>=0.26",
+    "redis>=5.2",
+    "praw>=7.8",
+    "imageio-ffmpeg>=0.5",
+    "pillow>=11",
+    "imagehash>=4.3",
+    "python-multipart>=0.0.20",
+    "httpx>=0.28",
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/seeding"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Migration do Alembic tu sinh - sua tay de vua style thi lan sau autogenerate lai hong.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+ignore = [
+    # Depends(...) o gia tri mac dinh la idiom chuan cua FastAPI, khong phai loi.
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# arq doc thang cac thuoc tinh lop nay, khong the boc ClassVar.
+"src/seeding/worker/settings.py" = ["RUF012"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Mot event loop cho ca phien test. Engine la singleton toan module, ma connection
+# cua asyncpg thi gan voi loop da tao ra no - moi test mot loop se lam pool vo.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "browser: can mo Camoufox that - cham, chay bang: pytest -m browser",
+    "media: chay ffmpeg that - cham, chay bang: pytest -m media",
+]
+# Mac dinh bo qua test trinh duyet cho vong lap nhanh.
+addopts = "-m 'not browser and not media'"
