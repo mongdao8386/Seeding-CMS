@@ -25,7 +25,7 @@ from seeding.adapters import reddit as _reddit  # noqa: F401 - import de dang ky
 from seeding.adapters import tiktok_http as _tiktok_http  # noqa: F401 - SAU browser: ghi de TikTok
 from seeding.config import get_settings
 from seeding.core import activity as activity_mod
-from seeding.core import graph, ratelimit, readiness, recurring, takeover
+from seeding.core import graph, outreach, ratelimit, readiness, recurring, takeover
 from seeding.core import profiles as profiles_mod
 from seeding.core import slots as slots_mod
 from seeding.core.planner import due_jobs
@@ -37,6 +37,7 @@ from seeding.models import (
     ActivityKind,
     Attempt,
     JobStatus,
+    Platform,
     PostJob,
     Variant,
 )
@@ -136,9 +137,14 @@ async def plan_activity(ctx: dict) -> int:
     """Lap lich hoat dong nen cho ngay hom nay. Chay mot lan moi ngay."""
     async with SessionLocal() as session:
         created = await activity_mod.plan_all(session)
-    if created:
-        log.info("plan_activity.done", created=created)
-    return created
+        # Nuoi huong ra ngoai (tha tim / theo doi / binh luan tren For You). Rieng
+        # TikTok, va chi khi duong HTTP bat - trinh duyet khong tai noi feed qua proxy.
+        outward = 0
+        if get_settings().tiktok_interact_via_http:
+            outward = await outreach.plan_all(session)
+    if created or outward:
+        log.info("plan_activity.done", created=created, outward=outward)
+    return created + outward
 
 
 async def repeat_tick(ctx: dict) -> int:
@@ -356,21 +362,28 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             return job.status.value
 
         if job.kind in TARGETED_KINDS:
-            from seeding.browser import interact
+            if job.account.platform is Platform.TIKTOK and get_settings().tiktok_interact_via_http:
+                # HTTP thay trinh duyet: trang TikTok khong tai noi qua proxy dan cu,
+                # endpoint thi 1-3 giay. Cung hop dong ket qua.
+                from seeding.core import tiktok_interact
 
-            target_handle = None
-            if job.target_account_id is not None:
-                target = await session.get(Account, job.target_account_id)
-                target_handle = target.handle if target else None
+                result = await tiktok_interact.run(session, profile, job)
+            else:
+                from seeding.browser import interact
 
-            result = await interact.run(
-                profile,
-                job.account.platform,
-                job.kind,
-                target_url=job.target_url,
-                target_handle=target_handle,
-                budget_seconds=job.duration_seconds,
-            )
+                target_handle = None
+                if job.target_account_id is not None:
+                    target = await session.get(Account, job.target_account_id)
+                    target_handle = target.handle if target else None
+
+                result = await interact.run(
+                    profile,
+                    job.account.platform,
+                    job.kind,
+                    target_url=job.target_url,
+                    target_handle=target_handle,
+                    budget_seconds=job.duration_seconds,
+                )
 
             # Canh chi tinh la co that khi trinh duyet lam duoc that. Coi canh da lap
             # ke hoach la da xong thi moi phep tinh mat do sau do deu sai.

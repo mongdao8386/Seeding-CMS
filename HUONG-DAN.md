@@ -180,8 +180,10 @@ $acc = Invoke-RestMethod -Headers $H -Method Post -Uri "$api/accounts" -ContentT
 
 `secrets` được mã hoá ngay khi ghi xuống database và không bao giờ đọc ngược ra qua API.
 
-`daily_cap` là trần **sau khi warm-up xong**. Tài khoản mới bắt đầu ở 1 bài/ngày và tăng
-dần qua `WARMUP_DAYS` (mặc định 14 ngày).
+`daily_cap` là trần **sau khi warm-up xong**. Hai ngày đầu (`WARMUP_QUIET_DAYS`, mặc định 2)
+tài khoản **không đăng gì cả** — chỉ tương tác (xem 6.8). Sau đó bắt đầu ở 1 bài/ngày và tăng
+dần lên `daily_cap` qua `WARMUP_DAYS` (mặc định 3 ngày). Job bị chặn vì chưa tới ngày thì được
+lùi tới **mốc giờ vàng** kế tiếp (6.3), không phải +1 tiếng.
 
 ### 3.3. Soạn nội dung
 
@@ -676,6 +678,26 @@ cạnh chưa bấm là đã xong, mọi con số mật độ ở trên đều sa
 > mà không theo dõi ai khác thì là cái bẫy. Trong database hai trường hợp giống hệt nhau.
 > Cảnh báo này luôn hiện trên màn hình Network, cố ý.
 
+
+### 6.8. Nuôi hướng ra ngoài trên TikTok: thả tim, theo dõi, bình luận người lạ
+
+Tương tác chéo (6.6) nối các tài khoản **của bạn** với nhau. Nhưng một tài khoản mới mà chỉ
+tương tác với sáu tài khoản mới khác là một cụm kín — thứ dễ nhìn ra nhất. Nên trên TikTok
+hệ thống còn tự nuôi **hướng ra ngoài**: đọc For You *của chính tài khoản đó* (qua proxy của
+nó), thả tim vài video đang lên, theo dõi vài creator lạ, thỉnh thoảng bình luận.
+
+- Chạy hằng ngày cùng lúc với hoạt động nền, không phải bật gì thêm. Tắt bằng
+  `TIKTOK_INTERACT_VIA_HTTP=false` trong `.env`.
+- Ngân sách một ngày cố ý nhỏ: 4–8 thả tim, 1–3 theo dõi, 0–2 bình luận. Ngày đầu tiên chỉ
+  một nửa và không bình luận. Sửa trong `src/seeding/core/outreach.py`.
+- Bình luận chỉ vào video **đã thả tim** và đi sau nó ít nhất 8 phút. Câu bình luận lấy từ
+  một bộ tiếng Việt đời thường trong `core/tiktok_interact.py` — thêm bớt ở đó.
+- Tất cả đi bằng HTTP qua signer (như đăng bài), không mở trình duyệt: mỗi hành động ~1–3
+  giây qua proxy dân cư. Thả tim và theo dõi được thử lại khi không rõ kết quả; **bình luận
+  thì không** — gửi lại là hai bình luận giống nhau, nên nó vào hàng đợi chờ bạn (6.1).
+
+Xem các job này ở màn hình Activity của tài khoản: `engage` = thả tim, `follow`, `comment`,
+cột target là video hoặc trang cá nhân của người lạ.
 
 ### 6.7. Điện thoại thật (Android)
 

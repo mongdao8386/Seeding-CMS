@@ -130,10 +130,15 @@ class ActivityKind(enum.StrEnum):
     FOLLOW = "follow"
     ENGAGE = "engage"  # tha cam xuc vao mot bai cu the
     REPOST = "repost"
+    # Binh luan vao mot video cu the cua nguoi la. Khac ENGAGE (tha tim) o cho no de
+    # lai CHU - khong idempotent, khong duoc tu thu lai khi khong ro ket qua.
+    COMMENT = "comment"
 
 
-# Ba loai tren nham vao mot dich; bon loai con lai thi khong.
-TARGETED_KINDS = frozenset({ActivityKind.FOLLOW, ActivityKind.ENGAGE, ActivityKind.REPOST})
+# Bon loai tren nham vao mot dich; bon loai con lai thi khong.
+TARGETED_KINDS = frozenset(
+    {ActivityKind.FOLLOW, ActivityKind.ENGAGE, ActivityKind.REPOST, ActivityKind.COMMENT}
+)
 
 
 class RelationStatus(enum.StrEnum):

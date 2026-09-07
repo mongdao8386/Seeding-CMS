@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     tiktok_post_via_http: bool = True
     # Signer ky X-Bogus/X-Gnarly cho buoc publish - tools/tiktok-signer, Start.cmd tu bat.
     signer_url: str = "http://127.0.0.1:8080"
+    # Tha tim / theo doi / binh luan tren TikTok bang HTTP (core/tiktok_interact) thay vi
+    # trinh duyet, va lap lich nuoi huong ra ngoai tren For You (core/outreach).
+    tiktok_interact_via_http: bool = True
 
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic
