@@ -27,6 +27,8 @@ $venvPython = Join-Path $root '.venv\Scripts\python.exe'
 
 $API_PORT = 8000
 $WEB_PORT = 3000
+# Signer ky X-Bogus/X-Gnarly cho buoc dang bai TikTok (tools	iktok-signer).
+$SIGNER_PORT = 8080
 
 # ------------------------------------------------------------------ tien ich
 
@@ -179,7 +181,7 @@ function StopEverything {
     }
 
     # Cac tien trinh chay ngoai launcher - vd ban tu go lenh trong terminal rieng.
-    foreach ($item in @(@{ Name = 'API'; Port = $API_PORT }, @{ Name = 'Dashboard'; Port = $WEB_PORT })) {
+    foreach ($item in @(@{ Name = 'API'; Port = $API_PORT }, @{ Name = 'Dashboard'; Port = $WEB_PORT }, @{ Name = 'Signer'; Port = $SIGNER_PORT })) {
         $owner = PortOwner $item.Port
         if ($owner) {
             KillTree $owner
@@ -391,6 +393,56 @@ if (PortOwner $API_PORT) {
     if (-not $apiUp) {
         Die "API khong len sau 60 giay" @('Xem cua so "Seeding - API" de biet loi.')
     }
+}
+
+Step "Bat signer (ky request dang bai TikTok)"
+$signerDir = Join-Path $root 'tools\tiktok-signer'
+if (PortOwner $SIGNER_PORT) {
+    Ok "da chay san (cong $SIGNER_PORT)"
+} else {
+    if (-not (Test-Path (Join-Path $signerDir 'node_modules'))) {
+        Say "Cai goi cho signer (mot lan, ~3 phut)..."
+        Push-Location $signerDir
+        $code = Native 'npm.cmd' @('ci', '--no-audit', '--no-fund') -Quiet
+        Pop-Location
+        if ($code -ne 0) { Die "npm ci cho signer that bai" @('cd tools\tiktok-signer', 'npm ci') }
+        Ok "cai xong"
+    }
+
+    # .env la cua tung may (duong dan Chrome), khong nam trong git. Sinh lan dau.
+    # Puppeteer trong goi ghim Chrome 148 con cache tai 152 -> lech phien ban, init
+    # hong; tro thang vao Chrome/Edge cua may cho chac.
+    $envFile = Join-Path $signerDir '.env'
+    if (-not (Test-Path $envFile)) {
+        $chrome = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+        ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+        if (-not $chrome) {
+            Die "Khong tim thay Chrome hay Edge cho signer" @(
+                'Cai Google Chrome, hoac dat PUPPETEER_EXECUTABLE_PATH trong tools\tiktok-signer\.env')
+        }
+        Set-Content -Path $envFile -Encoding ascii -Value @(
+            "PORT=$SIGNER_PORT",
+            "PROXY_ENABLED=false",
+            "PUPPETEER_EXECUTABLE_PATH=$chrome"
+        )
+        Ok "tao tools\tiktok-signer\.env (Chrome: $chrome)"
+    }
+
+    StartWindow 'Seeding - Signer' "npm --prefix tools\tiktok-signer start"
+    $signerUp = WaitFor "Signer" 120 {
+        try {
+            $r = Invoke-WebRequest -Uri "http://127.0.0.1:$SIGNER_PORT/health" -TimeoutSec 3 -UseBasicParsing
+            return ($r.Content -match '"ready":true')
+        } catch { return $false }
+    }
+    if (-not $signerUp) {
+        Die "Signer khong san sang sau 120 giay" @('Xem cua so "Seeding - Signer" de biet loi.')
+    }
+    Ok "san sang"
 }
 
 Step "Bat worker"

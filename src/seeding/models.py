@@ -570,6 +570,33 @@ class PlatformWindow(UUIDPk, Base):
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
 
+class PostSlot(UUIDPk, Base):
+    """Khung gio vang de DANG BAI cua tung nen tang, theo thu trong tuan.
+
+    Khac PlatformWindow - do la KHOANG gio hoat dong nen (7h-23h). Day la cac MOC gio
+    roi rac: "thu Ba: 2h, 4h, 9h". Planner bam moi bai vao mot moc sau starts_at cua
+    chien dich, tra deu tai khoan qua cac moc trong ngay, roi rai them vai phut de
+    khong bao gio hai bai dang cung giay.
+
+    Gio tinh theo settings.schedule_timezone (mac dinh Asia/Ho_Chi_Minh), KHONG phai
+    UTC - bang gio vang nguoi van hanh nhap la gio dia phuong cua khan gia.
+
+    Nen tang khong co moc nao thi planner dung starts_at + cua so rai nhu truoc.
+    """
+
+    __tablename__ = "post_slots"
+    __table_args__ = (
+        UniqueConstraint("platform", "weekday", "hour", "minute", name="uq_post_slot"),
+    )
+
+    platform: Mapped[Platform] = mapped_column(Enum(Platform, native_enum=False))
+    # 0 = thu Hai ... 6 = Chu nhat, nhu date.weekday() cua Python.
+    weekday: Mapped[int] = mapped_column(Integer)
+    hour: Mapped[int] = mapped_column(Integer)
+    minute: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str | None] = mapped_column(Text, default=None)
+
+
 class ContentItem(UUIDPk, Base):
     """Y tuong goc. Sinh ra N Variant, moi Variant di toi mot Account."""
 

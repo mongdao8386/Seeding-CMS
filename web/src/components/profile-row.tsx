@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api, type Profile, type Proxy } from "@/lib/api";
+import { api, type OpenedProfile, type Profile, type Proxy } from "@/lib/api";
 import { ConfirmButton, Field, Platform, when } from "@/components/ui";
 
 const ENGINES = ["camoufox", "patchright"];
@@ -26,6 +26,26 @@ export function ProfileRow({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [needsForce, setNeedsForce] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [opened, setOpened] = useState<string | null>(null);
+
+  // Mo cua so trinh duyet that cua profile nay tren may dang chay API.
+  //
+  // Khong doi ket qua cuoi: mo mot phien Camoufox qua proxy dan cu mat hang chuc
+  // giay, va API chi sinh tien trinh roi tra loi ngay. Cai nut nay bao "da goi",
+  // khong bao "da mo xong" - noi qua thi lan nao trang cham nguoi dung cung tuong hong.
+  async function openWindow() {
+    setOpening(true);
+    setOpened(null);
+    try {
+      const r = await api.post<OpenedProfile>(`/profiles/${profile.id}/open`, {});
+      setOpened(r.detail);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setOpening(false);
+    }
+  }
 
   async function save(force: boolean) {
     setBusy(true);
@@ -176,6 +196,18 @@ export function ProfileRow({
       <td className="mono whitespace-nowrap text-xs">{when(profile.last_health_at)}</td>
       <td>
         <div className="flex justify-end gap-2">
+          <button
+            className="btn btn-ghost text-xs"
+            disabled={opening || !profile.proxy_label}
+            title={
+              profile.proxy_label
+                ? "Open this profile in a real browser window on the machine running the API"
+                : "No proxy — opening it would browse from your own IP"
+            }
+            onClick={openWindow}
+          >
+            {opening ? "opening…" : "open"}
+          </button>
           <button className="btn btn-ghost text-xs" onClick={() => setEditing(true)}>
             edit
           </button>
@@ -195,6 +227,11 @@ export function ProfileRow({
             delete
           </ConfirmButton>
         </div>
+        {opened && (
+          <p className="faint mt-1 text-right text-xs" style={{ maxWidth: 320 }}>
+            {opened}
+          </p>
+        )}
       </td>
     </tr>
   );

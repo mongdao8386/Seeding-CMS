@@ -11,12 +11,14 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from seeding.core import hashtags
+from seeding.core import slots as slots_mod
 from seeding.core.spintax import content_hash, expand, rng_for
 from seeding.models import (
     Campaign,
@@ -77,6 +79,10 @@ async def plan_campaign(session: AsyncSession, campaign_id: uuid.UUID) -> list[P
         .all()
     }
 
+    # Khung gio vang theo nen tang. Nap mot lan; nen tang khong co thi None.
+    slot_tables = await slots_mod.load(session)
+    zone = slots_mod.tz()
+
     created: list[PostJob] = []
     for group in campaign.groups:
         for raw_account_id in group.account_ids:
@@ -85,7 +91,16 @@ async def plan_campaign(session: AsyncSession, campaign_id: uuid.UUID) -> list[P
             if key in existing:
                 continue
 
-            job = _build_job(campaign, group, content, account_id, key, pools)
+            job = _build_job(
+                campaign,
+                group,
+                content,
+                account_id,
+                key,
+                pools,
+                slots=slot_tables.get(group.platform),
+                zone=zone,
+            )
             session.add(job)
             created.append(job)
             existing.add(key)
@@ -101,6 +116,9 @@ def _build_job(
     account_id: uuid.UUID,
     key: str,
     pools: dict[str, list[str]],
+    *,
+    slots: slots_mod.SlotTable | None = None,
+    zone: ZoneInfo | None = None,
 ) -> PostJob:
     rng = rng_for(campaign.id, group.id, account_id)
 
@@ -118,8 +136,20 @@ def _build_job(
 
     # Stagger: khong bao gio dang cung mot giay. Cua so lay tu campaign.
     window = max(0, campaign.stagger_window_seconds)
+
+    # Nen tang co khung gio vang thi bam vao moc gan nhat sau starts_at (tra deu tai
+    # khoan qua cac moc trong ngay), va chi rai vai phut quanh moc - "6h00" ma dang
+    # luc 6h58 thi khong con la 6h00 nua. Khong co thi dung starts_at nhu truoc.
+    if slots:
+        base = slots_mod.choose(
+            slots, not_before=campaign.starts_at, rng=rng, zone=zone or slots_mod.tz()
+        )
+        window = min(window, slots_mod.JITTER_MAX_SECONDS)
+    else:
+        base = campaign.starts_at
+
     offset = rng.randrange(window + 1) if window else 0
-    scheduled_at = campaign.starts_at + timedelta(seconds=offset)
+    scheduled_at = base + timedelta(seconds=offset)
 
     return PostJob(
         campaign_id=campaign.id,

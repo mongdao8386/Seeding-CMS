@@ -33,6 +33,9 @@ dependencies = [
     # chay voi timezone My la fingerprint tu mau thuan, dung thu ma ca he thong nay
     # ton tai de tranh.
     "camoufox[geoip]>=0.5",
+    # Co so du lieu mui gio. Windows KHONG co san: thieu no thi ZoneInfo("Asia/Ho_Chi_Minh")
+    # nem loi va planner khong bam duoc bai vao khung gio vang.
+    "tzdata>=2025.2",
     "playwright>=1.49",
 ]
 

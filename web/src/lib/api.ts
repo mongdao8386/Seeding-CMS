@@ -203,6 +203,14 @@ export type Profile = {
   consecutive_health_failures: number;
 };
 
+export type OpenedProfile = {
+  profile_id: string;
+  handle: string;
+  pid: number;
+  url: string | null;
+  detail: string;
+};
+
 export type Proxy = {
   id: string;
   label: string;
@@ -348,6 +356,19 @@ export type PlatformWindow = {
   active_to_hour: number;
   note: string | null;
 };
+
+export type PostSlot = {
+  id: string;
+  platform: string;
+  /** 0 = thu Hai ... 6 = Chu nhat. */
+  weekday: number;
+  /** Gio dia phuong cua khan gia (SlotMeta.timezone), khong phai UTC. */
+  hour: number;
+  minute: number;
+  note: string | null;
+};
+
+export type SlotMeta = { timezone: string; jitter_max_seconds: number };
 
 export type GraphAudit = {
   accounts: number;

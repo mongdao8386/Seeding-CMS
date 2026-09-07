@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type PlatformWindow } from "@/lib/api";
 import { Empty, ErrorBox, Loading, PageHead, useLoad } from "@/components/ui";
+import { PostSlots } from "@/components/post-slots";
 
 const PLATFORMS = ["reddit", "threads", "x", "youtube", "instagram", "facebook", "tiktok"];
 
@@ -64,9 +65,12 @@ export default function Settings() {
 
       {!defaults.loading && !defaults.data && <Empty>Could not read the defaults.</Empty>}
 
+      <PostSlots onError={setError} />
+
       <p className="faint mt-6 max-w-3xl text-xs">
-        These hours govern background activity — feed scrolling, reading, reacting, and the
-        cross-account follows. Posting times come from each campaign&apos;s own spread window. A
+        Active hours govern background activity — feed scrolling, reading, reacting, and the
+        cross-account follows. Posting times come from the posting slots above when a platform
+        has any, otherwise from each campaign&apos;s own spread window. A
         window that wraps past midnight is not supported: waking hours straddling 3am are the
         pattern this setting exists to avoid. End the day at 24:00 to run right up to midnight.
       </p>

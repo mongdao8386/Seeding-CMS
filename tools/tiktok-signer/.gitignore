@@ -1,0 +1,6 @@
+# Cai bang `npm ci` trong thu muc nay. package-lock.json thi commit.
+node_modules/
+# Ho so Chrome tam cua signer - no tu tao va tu xoa moi lan khoi dong.
+.chrome-profile/
+# May nao cung phai tu tro den Chrome cua may do - xem .env.example.
+.env

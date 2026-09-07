@@ -12,6 +12,7 @@ graph_tick()       moc them mot it canh trong do thi tuong tac cheo
 
 from __future__ import annotations
 
+import random
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -21,10 +22,12 @@ from sqlalchemy import select, update
 from seeding.adapters import base as adapters
 from seeding.adapters import browser as _browser  # noqa: F401 - import de dang ky adapter
 from seeding.adapters import reddit as _reddit  # noqa: F401 - import de dang ky adapter
+from seeding.adapters import tiktok_http as _tiktok_http  # noqa: F401 - SAU browser: ghi de TikTok
 from seeding.config import get_settings
 from seeding.core import activity as activity_mod
 from seeding.core import graph, ratelimit, readiness, recurring, takeover
 from seeding.core import profiles as profiles_mod
+from seeding.core import slots as slots_mod
 from seeding.core.planner import due_jobs
 from seeding.db import SessionLocal
 from seeding.models import (
@@ -51,15 +54,36 @@ async def tick(ctx: dict) -> int:
     enqueued = 0
 
     async with SessionLocal() as session:
+        slot_tables = None
         for job in await due_jobs(session, now):
-            allowed, reason = await ratelimit.check(session, job.account, settings.warmup_days, now)
+            allowed, reason = await ratelimit.check(
+                session,
+                job.account,
+                settings.warmup_days,
+                now,
+                quiet_days=settings.warmup_quiet_days,
+            )
 
             if not allowed:
-                # Chua duoc chay thi day lui 1 tieng, khong danh that bai.
-                job.scheduled_at = now + timedelta(hours=1)
+                # Chua duoc chay thi lui lai, khong danh that bai. Lui toi MOC KHUNG GIO
+                # VANG ke tiep chu khong phai +1 tieng: job bi chan vi chua het quiet
+                # period se duoc tha dung gio vang, thay vi troi dan vao gio ngau nhien.
+                if slot_tables is None:
+                    slot_tables = await slots_mod.load(session)
+                job.scheduled_at = slots_mod.defer(
+                    slot_tables.get(job.account.platform),
+                    now=now,
+                    rng=random.Random(str(job.id)),
+                    zone=slots_mod.tz(),
+                )
                 job.last_error = f"rate governor: {reason}"
                 await session.commit()
-                log.info("tick.deferred", job=str(job.id), reason=reason)
+                log.info(
+                    "tick.deferred",
+                    job=str(job.id),
+                    reason=reason,
+                    until=job.scheduled_at.isoformat(timespec="minutes"),
+                )
                 continue
 
             # Claim nguyen tu: chi mot worker gianh duoc job nay.

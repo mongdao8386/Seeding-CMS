@@ -15,10 +15,12 @@ from sqlalchemy.orm import aliased, selectinload
 from seeding.config import get_settings
 from seeding.core import activity as activity_mod
 from seeding.core import bulk, graph, proxylist, readiness, recurring, survival, takeover, vault
+from seeding.core import desktop as desktop_mod
 from seeding.core import devices as devices_mod
 from seeding.core import fingerprint as fpm
 from seeding.core import hashtags as tags_mod
 from seeding.core import profiles as profiles_mod
+from seeding.core import slots as slots_mod
 from seeding.core.planner import plan_campaign
 from seeding.core.spintax import combinations, content_hash, expand, rng_for
 from seeding.db import get_session
@@ -38,6 +40,7 @@ from seeding.models import (
     Platform,
     PlatformWindow,
     PostJob,
+    PostSlot,
     Profile,
     Proxy,
     ProxyKind,
@@ -70,6 +73,8 @@ from seeding.schemas import (
     GroupOut,
     JobOut,
     NamedOut,
+    OpenProfileIn,
+    OpenProfileOut,
     Page,
     PersonaIn,
     PreviewIn,
@@ -87,6 +92,9 @@ from seeding.schemas import (
     RenameIn,
     ResolveIn,
     SessionEventOut,
+    SlotIn,
+    SlotMeta,
+    SlotOut,
     StatsOut,
     TakeoverOut,
     WindowIn,
@@ -938,6 +946,49 @@ async def profile_events(
     return list((await s.execute(stmt)).scalars().all())
 
 
+@router.post("/profiles/{profile_id}/open", response_model=OpenProfileOut)
+async def open_profile_window(
+    profile_id: uuid.UUID,
+    body: OpenProfileIn | None = None,
+    s: AsyncSession = Depends(get_session),
+) -> OpenProfileOut:
+    """Mo cua so trinh duyet that cua profile nay, ngay tren may dang chay API.
+
+    Dung de nhin tan mat mot tai khoan: kiem tra con dang nhap khong, dang nhap lai,
+    giai captcha, hay chi de xem trang no thay la trang gi. Cookie duoc luu lai khi
+    ban dong cua so, nen moi thu lam bang tay deu duoc giu.
+
+    KHONG mo khi profile chua co proxy. Mo tay khong phai ngoai le cua bat bien do -
+    trinh duyet se di ra bang IP nha ban va nen tang ghi lai dieu do y het nhu khi
+    worker chay.
+    """
+    profile = await s.get(Profile, profile_id)
+    if profile is None:
+        raise HTTPException(404, "No such profile")
+
+    account = await s.get(Account, profile.account_id)
+    if account is None:
+        raise HTTPException(409, "This profile is not attached to an account")
+
+    verdict = readiness.check(account, profile)
+    if profile.proxy_id is None:
+        raise HTTPException(409, verdict.reason or "this profile has no proxy")
+
+    url = body.url if body else None
+    pid = desktop_mod.spawn(profile.id, url)
+
+    # Phien chua dang nhap van mo duoc - do chinh la luc can mo nhat. Chi noi ro ra
+    # de nguoi dung biet truoc se thay man hinh dang nhap chu khong phai feed.
+    note = (
+        "Browser opening. Close the window when done and the cookies are saved."
+        if profile.cookies_enc
+        else "Browser opening, but this profile has never signed in - expect a login screen."
+    )
+    return OpenProfileOut(
+        profile_id=profile.id, handle=account.handle, pid=pid, url=url, detail=note
+    )
+
+
 def _profile_out(profile: Profile, account: Account, proxy: Proxy | None) -> ProfileOut:
     return ProfileOut(
         id=profile.id,
@@ -1640,6 +1691,77 @@ async def clear_window(
     scope = "every day" if weekday is None else f"weekday {weekday}"
     return DeleteOut(
         deleted=True, detail=f"{platform.value} is back on the default window for {scope}"
+    )
+
+
+# --------------------------------------------------------- khung gio vang dang bai
+
+
+@router.get("/slots", response_model=list[SlotOut])
+async def list_slots(s: AsyncSession = Depends(get_session)) -> list[PostSlot]:
+    """Cac moc gio dang bai da dat, moi nen tang moi thu. Nen tang khong co moc nao thi
+    planner dung starts_at cua chien dich + cua so rai nhu truoc."""
+    rows = (
+        await s.execute(
+            select(PostSlot).order_by(PostSlot.platform, PostSlot.weekday, PostSlot.hour)
+        )
+    ).scalars()
+    return list(rows)
+
+
+@router.get("/slots/meta", response_model=SlotMeta)
+async def slot_meta() -> SlotMeta:
+    return SlotMeta(
+        timezone=get_settings().schedule_timezone, jitter_max_seconds=slots_mod.JITTER_MAX_SECONDS
+    )
+
+
+@router.put("/slots", response_model=list[SlotOut])
+async def set_slots(body: SlotIn, s: AsyncSession = Depends(get_session)) -> list[PostSlot]:
+    """Dat cac moc cho mot nen tang tren cac ngay duoc chon. THAY THE moc cu cua ngay do."""
+    old = (
+        await s.execute(
+            select(PostSlot).where(
+                PostSlot.platform == body.platform, PostSlot.weekday.in_(body.weekdays)
+            )
+        )
+    ).scalars()
+    for row in old:
+        await s.delete(row)
+    await s.flush()
+
+    out: list[PostSlot] = []
+    for day in body.weekdays:
+        for hour in body.hours:
+            slot = PostSlot(
+                platform=body.platform, weekday=day, hour=hour, minute=0, note=body.note
+            )
+            s.add(slot)
+            out.append(slot)
+    await s.commit()
+    return out
+
+
+@router.delete("/slots/{platform}", response_model=DeleteOut)
+async def clear_slots(
+    platform: Platform,
+    weekday: int | None = Query(None, ge=0, le=6),
+    s: AsyncSession = Depends(get_session),
+) -> DeleteOut:
+    """Bo moc cua mot nen tang. Khong truyen `weekday` thi bo ca bay ngay."""
+    stmt = select(PostSlot).where(PostSlot.platform == platform)
+    if weekday is not None:
+        stmt = stmt.where(PostSlot.weekday == weekday)
+    rows = list((await s.execute(stmt)).scalars().all())
+    if not rows:
+        raise HTTPException(404, "That platform has no posting slots for those days")
+    for row in rows:
+        await s.delete(row)
+    await s.commit()
+    scope = "every day" if weekday is None else f"weekday {weekday}"
+    return DeleteOut(
+        deleted=True,
+        detail=f"{platform.value} has no posting slots for {scope}; campaigns use their start time",
     )
 
 

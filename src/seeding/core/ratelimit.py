@@ -15,15 +15,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from seeding.models import Account, Attempt, PostJob
 
 
-def effective_daily_cap(account: Account, now: datetime, warmup_days: int) -> int:
+def effective_daily_cap(
+    account: Account, now: datetime, warmup_days: int, quiet_days: int = 0
+) -> int:
     """Tai khoan moi bat dau o 1 bai/ngay, tang tuyen tinh len daily_cap qua warmup_days.
 
-    Tran nam trong DB chu khong hardcode - ban se chinh no lien tuc.
+    `quiet_days` ngay dau thi tran la 0: tai khoan chi tuong tac, khong dang. Do la
+    cach nguoi van hanh nuoi acc - dang bai ngay ngay dau tren mot tai khoan vua mua
+    la dau hieu ro nhat. Tran nam trong DB chu khong hardcode - ban se chinh no lien tuc.
     """
     if account.warmup_started_at is None:
         return 1
 
     days_in = (now - account.warmup_started_at).days
+    if days_in < quiet_days:
+        return 0
     if days_in >= warmup_days:
         return account.daily_cap
 
@@ -47,7 +53,11 @@ async def posts_last_24h(session: AsyncSession, account_id, now: datetime) -> in
 
 
 async def check(
-    session: AsyncSession, account: Account, warmup_days: int, now: datetime | None = None
+    session: AsyncSession,
+    account: Account,
+    warmup_days: int,
+    now: datetime | None = None,
+    quiet_days: int = 0,
 ) -> tuple[bool, str]:
     """Tra ve (duoc phep chay, ly do neu bi chan)."""
     now = now or datetime.now(UTC)
@@ -55,7 +65,10 @@ async def check(
     if account.status.value in {"suspended", "dead", "needs_human"}:
         return False, f"account status is {account.status.value}"
 
-    cap = effective_daily_cap(account, now, warmup_days)
+    cap = effective_daily_cap(account, now, warmup_days, quiet_days)
+    if cap == 0:
+        days_in = (now - account.warmup_started_at).days if account.warmup_started_at else 0
+        return False, f"warm-up quiet period: day {days_in + 1} of {quiet_days}, no posting yet"
     used = await posts_last_24h(session, account.id, now)
     if used >= cap:
         return False, f"daily cap reached: {used}/{cap} posts in 24h"

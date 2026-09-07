@@ -115,6 +115,20 @@ class ProfileOut(BaseModel):
     consecutive_health_failures: int
 
 
+class OpenProfileIn(BaseModel):
+    """Mo profile o dau. De trong thi vao thang trang chu cua nen tang."""
+
+    url: str | None = None
+
+
+class OpenProfileOut(BaseModel):
+    profile_id: uuid.UUID
+    handle: str
+    pid: int
+    url: str | None
+    detail: str
+
+
 class SessionEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -454,6 +468,51 @@ class WindowOut(BaseModel):
     active_from_hour: int
     active_to_hour: int
     note: str | None
+
+
+class SlotIn(BaseModel):
+    """Cac moc gio dang bai cua mot nen tang, cho mot hoac nhieu ngay trong tuan.
+
+    Gui `hours` la THAY THE toan bo moc cua nhung ngay do - khong phai them vao. Nguoi
+    van hanh nhap "6, 10, 22" cho thu Hai la muon dung ba moc do, khong hon.
+    """
+
+    platform: Platform
+    weekdays: list[int] = Field(min_length=1, max_length=7)
+    hours: list[int] = Field(min_length=1, max_length=24)
+    note: str | None = None
+
+    @field_validator("weekdays")
+    @classmethod
+    def _valid_days(cls, value: list[int]) -> list[int]:
+        bad = [d for d in value if d < 0 or d > 6]
+        if bad:
+            raise ValueError(f"weekday must be 0 (Monday) to 6 (Sunday), got {bad}")
+        return sorted(set(value))
+
+    @field_validator("hours")
+    @classmethod
+    def _valid_hours(cls, value: list[int]) -> list[int]:
+        bad = [h for h in value if h < 0 or h > 23]
+        if bad:
+            raise ValueError(f"hour must be 0 to 23, got {bad}")
+        return sorted(set(value))
+
+
+class SlotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    platform: Platform
+    weekday: int
+    hour: int
+    minute: int
+    note: str | None
+
+
+class SlotMeta(BaseModel):
+    timezone: str
+    jitter_max_seconds: int
 
 
 # ----------------------------------------------------------------- phan trang
