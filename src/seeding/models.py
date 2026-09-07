@@ -124,6 +124,40 @@ class ActivityKind(enum.StrEnum):
     REACT = "react"
     WATCH_VIDEO = "watch_video"
 
+    # Ba loai duoi day NHAM VAO MOT DICH CU THE, khac han bon loai tren. Chung tao ra
+    # canh trong do thi tai khoan - va do thi moi la thu lam ca cum chet cung mot lan,
+    # chu khong phai fingerprint. Xem core/graph.py.
+    FOLLOW = "follow"
+    ENGAGE = "engage"  # tha cam xuc vao mot bai cu the
+    REPOST = "repost"
+
+
+# Ba loai tren nham vao mot dich; bon loai con lai thi khong.
+TARGETED_KINDS = frozenset({ActivityKind.FOLLOW, ActivityKind.ENGAGE, ActivityKind.REPOST})
+
+
+class RelationStatus(enum.StrEnum):
+    PLANNED = "planned"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class DeviceOS(enum.StrEnum):
+    ANDROID = "android"
+    # iOS co trong enum vi mo hinh du lieu chiu duoc no, KHONG phai vi chay duoc tren
+    # may nay. Tu dong hoa app iOS bat buoc phai co macOS + Xcode de build va ky
+    # WebDriverAgent; iOS Simulator thi khong cai duoc app tu App Store. Do la buc
+    # tuong nen tang, khong phai chuyen bo them cong suc.
+    IOS = "ios"
+
+
+class DeviceStatus(enum.StrEnum):
+    OFFLINE = "offline"  # khong thay qua adb
+    READY = "ready"
+    BUSY = "busy"
+    UNAUTHORIZED = "unauthorized"  # da cam nhung chua bam "cho phep go loi USB"
+    ERROR = "error"
+
 
 class TakeoverStatus(enum.StrEnum):
     OPEN = "open"
@@ -343,7 +377,90 @@ class ActivityJob(UUIDPk, Base):
     last_error: Mapped[str | None] = mapped_column(Text, default=None)
     detail: Mapped[str | None] = mapped_column(Text, default=None)
 
-    account: Mapped[Account] = relationship(lazy="joined")
+    # Dich cua cac loai FOLLOW / ENGAGE / REPOST. Rong voi bon loai khong nham dich.
+    # SET NULL khi tai khoan dich bi xoa: job da chay xong van la lich su co that, xoa
+    # no di thi khong con doi chieu duoc vi sao mot tai khoan co canh nay.
+    target_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), default=None
+    )
+    target_url: Mapped[str | None] = mapped_column(Text, default=None)
+
+    account: Mapped[Account] = relationship(lazy="joined", foreign_keys=[account_id])
+
+
+class Device(UUIDPk, Base):
+    """Mot dien thoai that (hoac may ao) chay app that.
+
+    Song song voi Profile chu khong thay the: Profile la mot danh tinh TRINH DUYET,
+    Device la mot danh tinh THIET BI. Mot tai khoan di theo mot trong hai duong, khong
+    phai ca hai - chay cung mot acc luc tren web luc tren app tu hai IP khac nhau la
+    dau vet ro hon bat ky thu gi ma ca he thong nay dang tranh.
+
+    Bat bien giu nguyen nhu ben Profile: mot acc <-> mot thiet bi <-> mot proxy, va
+    khong xoay. Thiet bi doi chu so huu giua chung la thu nen tang nhin thay ngay.
+    """
+
+    __tablename__ = "devices"
+    __table_args__ = (
+        UniqueConstraint("serial", name="uq_device_serial"),
+        UniqueConstraint("account_id", name="uq_device_account"),
+    )
+
+    # Serial cua adb (Android) hoac UDID (iOS). Day la thu duy nhat nhan dang duoc mot
+    # may khi cam nhieu may cung luc.
+    serial: Mapped[str] = mapped_column(String(190))
+    label: Mapped[str] = mapped_column(String(120))
+    os: Mapped[DeviceOS] = mapped_column(
+        Enum(DeviceOS, native_enum=False), default=DeviceOS.ANDROID
+    )
+    model: Mapped[str | None] = mapped_column(String(190), default=None)
+    os_version: Mapped[str | None] = mapped_column(String(40), default=None)
+
+    status: Mapped[DeviceStatus] = mapped_column(
+        Enum(DeviceStatus, native_enum=False), default=DeviceStatus.OFFLINE
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    last_error: Mapped[str | None] = mapped_column(Text, default=None)
+
+    # Rong = da cam nhung chua gan cho tai khoan nao.
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), default=None
+    )
+    proxy_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("proxies.id"), default=None)
+    note: Mapped[str | None] = mapped_column(Text, default=None)
+
+    account: Mapped[Account | None] = relationship(lazy="joined")
+    proxy: Mapped[Proxy | None] = relationship(lazy="joined")
+
+
+class Relationship(UUIDPk, Base):
+    """Mot canh trong do thi: A theo doi B.
+
+    Ton tai de KIEM SOAT do thi, khong phai de ghi chep cho vui. Nen tang bat trai
+    tai khoan bang do thi hanh vi de hon nhieu so voi bang fingerprint: mot cum trong
+    do ai cung theo doi tat ca moi nguoi va khong theo doi ai ben ngoai la hinh dang
+    khong ton tai trong doi that, va no lo ra chi bang mot cau truy van.
+
+    Co bang nay thi `core/graph.py` moi tra loi duoc "do thi hien tai day den dau",
+    "co bao nhieu cap theo doi lan nhau" - nhung con so quyet dinh ca cum song hay chet.
+    """
+
+    __tablename__ = "relationships"
+    __table_args__ = (
+        UniqueConstraint("follower_id", "target_id", name="uq_relationship_edge"),
+        Index("ix_relationship_target", "target_id", "status"),
+    )
+
+    follower_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    status: Mapped[RelationStatus] = mapped_column(
+        Enum(RelationStatus, native_enum=False), default=RelationStatus.PLANNED
+    )
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    note: Mapped[str | None] = mapped_column(Text, default=None)
+
+    follower: Mapped[Account] = relationship(foreign_keys=[follower_id], lazy="joined")
+    target: Mapped[Account] = relationship(foreign_keys=[target_id], lazy="joined")
 
 
 class TakeoverRequest(UUIDPk, Base):
@@ -434,9 +551,19 @@ class PlatformWindow(UUIDPk, Base):
     """
 
     __tablename__ = "platform_windows"
-    __table_args__ = (UniqueConstraint("platform", name="uq_platform_window"),)
+    __table_args__ = (UniqueConstraint("platform", "weekday", name="uq_platform_window_day"),)
 
     platform: Mapped[Platform] = mapped_column(Enum(Platform, native_enum=False))
+    # Thu trong tuan, theo cach danh so cua Python: 0 = thu Hai ... 6 = Chu nhat.
+    #
+    # Moi ngay mot ban ghi rieng, thay vi mot ban ghi cho ca tuan. Nguoi that khong
+    # thuc day va di ngu dung mot khung gio bay ngay lien - dung mot khung cho ca tuan
+    # chinh la mot mau hinh, chi la mau hinh kin dao hon gio 3 gio sang.
+    #
+    # Khong co ban ghi cho (nen tang, thu) nao thi ngay do dung mac dinh trong
+    # core/activity.py. Khong co tang trung gian "mac dinh cua nen tang": hai tang
+    # fallback la du, ba tang thi khong ai doan duoc gio thuc te la bao nhieu.
+    weekday: Mapped[int] = mapped_column(Integer)
     # Gio trong ngay, theo gio he thong. 0-23.
     active_from_hour: Mapped[int] = mapped_column(Integer, default=7)
     active_to_hour: Mapped[int] = mapped_column(Integer, default=23)

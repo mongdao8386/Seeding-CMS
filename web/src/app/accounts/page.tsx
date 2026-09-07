@@ -3,13 +3,18 @@
 import { useState } from "react";
 import {
   api,
+  qs,
   type Account,
+  type Page,
   type Profile,
   type Proxy,
   type ProxyTestAll,
 } from "@/lib/api";
 import { NewAccount } from "@/components/new-account";
 import { ImportAccounts } from "@/components/import-accounts";
+import { Devices } from "@/components/devices";
+import { ImportProxies } from "@/components/import-proxies";
+import { useWorkspace } from "@/components/workspace";
 import { ProfileRow } from "@/components/profile-row";
 import { AccountRow, ProxyRow } from "@/components/rows";
 import {
@@ -19,26 +24,59 @@ import {
   Field,
   Loading,
   PageHead,
+  Pager,
   Platform,
+  SearchBox,
   Status,
   useLoad,
+  usePaged,
   when,
 } from "@/components/ui";
 
-type Tab = "accounts" | "profiles" | "proxies";
+const PLATFORMS = ["reddit", "threads", "x", "youtube", "instagram", "facebook", "tiktok"];
+const ACCOUNT_STATUSES = ["new", "warming", "active", "needs_human", "suspended", "dead"];
+
+type Tab = "accounts" | "profiles" | "proxies" | "devices";
 
 export default function Accounts() {
   const [tab, setTab] = useState<Tab>("accounts");
   const [rowError, setRowError] = useState<unknown>(null);
   const [testingAll, setTestingAll] = useState(false);
   const [testAll, setTestAll] = useState<ProxyTestAll | null>(null);
-  const accounts = useLoad<Account[]>(() => api.get("/accounts"));
-  const profiles = useLoad<Profile[]>(() => api.get("/profiles"));
-  const proxies = useLoad<Proxy[]>(() => api.get("/proxies"));
+  const workspace = useWorkspace();
+  const [platform, setPlatform] = useState("");
+  const [status, setStatus] = useState("");
 
-  const withoutProfile = (accounts.data ?? []).filter(
-    (a) => a.platform !== "reddit" && !(profiles.data ?? []).some((p) => p.account_id === a.id),
+  const accounts = usePaged<Account>("/accounts", ({ limit, offset, q }) =>
+    `/accounts${qs({ limit, offset, q, platform, status, workspace_id: workspace.id })}`,
   );
+  const profiles = usePaged<Profile>("/profiles", ({ limit, offset, q }) =>
+    `/profiles${qs({ limit, offset, q })}`,
+  );
+  const proxies = usePaged<Proxy>("/proxies", ({ limit, offset, q }) =>
+    `/proxies${qs({ limit, offset, q })}`,
+  );
+
+  // Ba danh sach duoi day KHONG phan trang - chung la hang doi viec phai lam, va mot
+  // hang doi chi hien trang dau thi khong con la hang doi. Server tra ve day du.
+  const needProfile = useLoad<Account[]>(() => api.get("/accounts/without-profile"));
+  const needLogin = useLoad<Page<Profile>>(() =>
+    api.get("/profiles?logged_in=false&limit=500"),
+  );
+  // Proxy cho o chon trong form: phai la TOAN BO, khong phai trang dang xem.
+  const allProxies = useLoad<Page<Proxy>>(() => api.get("/proxies?limit=500"));
+
+  const proxyChoices = allProxies.data?.items ?? [];
+  const withoutProfile = needProfile.data ?? [];
+
+  function reloadAll() {
+    accounts.reload();
+    profiles.reload();
+    proxies.reload();
+    needProfile.reload();
+    needLogin.reload();
+    allProxies.reload();
+  }
 
   return (
     <>
@@ -47,14 +85,19 @@ export default function Accounts() {
         hint="One account ↔ one profile ↔ one proxy, bound for good and never rotated. Reddit goes through its API, so it needs no profile."
       />
 
-      <ErrorBox error={rowError ?? accounts.error ?? profiles.error ?? proxies.error} />
+      <ErrorBox
+        error={
+          rowError ?? accounts.error ?? profiles.error ?? proxies.error ?? needProfile.error
+        }
+      />
 
       <div className="mb-5 flex gap-1">
         {(
           [
-            ["accounts", `Accounts (${accounts.data?.length ?? 0})`],
-            ["profiles", `Profiles (${profiles.data?.length ?? 0})`],
-            ["proxies", `Proxies (${proxies.data?.length ?? 0})`],
+            ["accounts", `Accounts (${accounts.total})`],
+            ["profiles", `Profiles (${profiles.total})`],
+            ["proxies", `Proxies (${proxies.total})`],
+            ["devices", "Devices"],
           ] as [Tab, string][]
         ).map(([key, label]) => (
           <button
@@ -76,24 +119,75 @@ export default function Accounts() {
         <>
           {/* Dong khi ca hai cung dong; mo ra thi panel chiem tron hang. */}
           <div className="flex flex-wrap items-start gap-3 [&>div]:w-full">
-            <NewAccount onDone={accounts.reload} />
-            <ImportAccounts onDone={accounts.reload} />
+            <NewAccount onDone={reloadAll} />
+            <ImportAccounts onDone={reloadAll} />
           </div>
           {withoutProfile.length > 0 && (
             <div className="card mb-4 p-3" style={{ borderLeft: "3px solid var(--warn)" }}>
               <span className="label" style={{ color: "var(--warn)" }}>
-                No profile yet
+                No profile yet ({withoutProfile.length})
               </span>
               <p className="muted mt-1 text-sm">
-                {withoutProfile.map((a) => a.handle).join(", ")} — these accounts cannot post yet.
-                Create a profile in the next tab.
+                {withoutProfile
+                  .slice(0, 12)
+                  .map((a) => a.handle)
+                  .join(", ")}
+                {withoutProfile.length > 12 ? ` and ${withoutProfile.length - 12} more` : ""} — these
+                accounts cannot post yet. Create a profile in the next tab.
               </p>
             </div>
           )}
 
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <SearchBox
+              value={accounts.query}
+              onChange={accounts.setQuery}
+              placeholder="search handle…"
+            />
+            <select
+              value={platform}
+              onChange={(e) => {
+                setPlatform(e.target.value);
+                accounts.resetPage();
+              }}
+              className="text-sm"
+            >
+              <option value="">all platforms</option>
+              {PLATFORMS.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                accounts.resetPage();
+              }}
+              className="text-sm"
+            >
+              <option value="">all statuses</option>
+              {ACCOUNT_STATUSES.map((x) => (
+                <option key={x} value={x}>
+                  {x.replace("_", " ")}
+                </option>
+              ))}
+            </select>
+            <div className="ml-auto">
+              <Pager
+                total={accounts.total}
+                offset={accounts.offset}
+                pageSize={accounts.pageSize}
+                onGoto={accounts.goto}
+                noun="account"
+              />
+            </div>
+          </div>
+
           <div className="card overflow-x-auto">
             {accounts.loading && <Loading />}
-            {accounts.data?.length ? (
+            {accounts.items.length ? (
               <table className="grid">
                 <thead>
                   <tr>
@@ -107,18 +201,19 @@ export default function Accounts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {accounts.data.map((a) => (
-                    <AccountRow
-                      key={a.id}
-                      account={a}
-                      onChange={accounts.reload}
-                      onError={setRowError}
-                    />
+                  {accounts.items.map((a) => (
+                    <AccountRow key={a.id} account={a} onChange={reloadAll} onError={setRowError} />
                   ))}
                 </tbody>
               </table>
             ) : (
-              !accounts.loading && <Empty>No accounts yet.</Empty>
+              !accounts.loading && (
+                <Empty>
+                  {accounts.query || platform || status
+                    ? "Nothing matches those filters."
+                    : "No accounts yet."}
+                </Empty>
+              )
             )}
           </div>
         </>
@@ -126,14 +221,28 @@ export default function Accounts() {
 
       {tab === "profiles" && (
         <>
-          <NewProfile
-            accounts={withoutProfile}
-            proxies={proxies.data ?? []}
-            onDone={() => (profiles.reload(), accounts.reload())}
-          />
+          <NewProfile accounts={withoutProfile} proxies={proxyChoices} onDone={reloadAll} />
 
-          <div className="card mt-5 overflow-x-auto">
-            {profiles.data?.length ? (
+          <div className="mb-3 mt-5 flex flex-wrap items-center gap-2">
+            <SearchBox
+              value={profiles.query}
+              onChange={profiles.setQuery}
+              placeholder="search handle…"
+            />
+            <div className="ml-auto">
+              <Pager
+                total={profiles.total}
+                offset={profiles.offset}
+                pageSize={profiles.pageSize}
+                onGoto={profiles.goto}
+                noun="profile"
+              />
+            </div>
+          </div>
+
+          <div className="card overflow-x-auto">
+            {profiles.loading && <Loading />}
+            {profiles.items.length ? (
               <table className="grid">
                 <thead>
                   <tr>
@@ -147,44 +256,57 @@ export default function Accounts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.data.map((p) => (
+                  {profiles.items.map((p) => (
                     <ProfileRow
                       key={p.id}
                       profile={p}
-                      proxies={proxies.data ?? []}
-                      onChange={() => (profiles.reload(), accounts.reload())}
+                      proxies={proxyChoices}
+                      onChange={reloadAll}
                       onError={setRowError}
                     />
                   ))}
                 </tbody>
               </table>
             ) : (
-              <Empty>No profiles yet.</Empty>
+              !profiles.loading && (
+                <Empty>
+                  {profiles.query ? "Nothing matches that search." : "No profiles yet."}
+                </Empty>
+              )
             )}
           </div>
 
-          {(profiles.data ?? []).some((p) => !p.last_login_at) && (
+          {(needLogin.data?.items.length ?? 0) > 0 && (
             <div className="card mt-4 p-3">
-              <span className="label">Sign in by hand</span>
+              <span className="label">
+                Sign in by hand ({needLogin.data?.total ?? 0})
+              </span>
               <p className="muted mb-2 mt-1 text-sm">
                 The dashboard cannot open a browser on your machine — run this in a terminal. Do it
                 once, then the session is kept for good.
               </p>
               <div className="flex flex-col gap-2">
-                {(profiles.data ?? [])
-                  .filter((p) => !p.last_login_at)
-                  .map((p) => (
-                    <Command key={p.id}>
-                      {`.venv/Scripts/python scripts/login_profile.py ${p.platform} ${p.handle}`}
-                    </Command>
-                  ))}
+                {(needLogin.data?.items ?? []).slice(0, 20).map((p) => (
+                  <Command key={p.id}>
+                    {`.venv/Scripts/python scripts/login_profile.py ${p.platform} ${p.handle}`}
+                  </Command>
+                ))}
               </div>
+              {(needLogin.data?.total ?? 0) > 20 && (
+                <p className="faint mt-2 text-xs">
+                  Showing 20 of {needLogin.data?.total}. The rest appear as these are done.
+                </p>
+              )}
             </div>
           )}
         </>
       )}
 
-      {tab === "proxies" && (
+      {tab === "devices" && (
+        <Devices accounts={accounts.items} proxies={proxyChoices} onError={setRowError} />
+      )}
+
+            {tab === "proxies" && (
         <>
           {testAll && (
             <div
@@ -212,9 +334,31 @@ export default function Accounts() {
               )}
             </div>
           )}
-          <NewProxy onDone={proxies.reload} />
-          <div className="card mt-5 overflow-x-auto">
-            {proxies.data?.length ? (
+          <div className="mb-4 flex flex-wrap items-start gap-3 [&>div]:w-full">
+            <ImportProxies onDone={reloadAll} />
+          </div>
+          <NewProxy onDone={reloadAll} />
+
+          <div className="mb-3 mt-5 flex flex-wrap items-center gap-2">
+            <SearchBox
+              value={proxies.query}
+              onChange={proxies.setQuery}
+              placeholder="search label or host…"
+            />
+            <div className="ml-auto">
+              <Pager
+                total={proxies.total}
+                offset={proxies.offset}
+                pageSize={proxies.pageSize}
+                onGoto={proxies.goto}
+                noun="proxy"
+              />
+            </div>
+          </div>
+
+          <div className="card overflow-x-auto">
+            {proxies.loading && <Loading />}
+            {proxies.items.length ? (
               <table className="grid">
                 <thead>
                   <tr>
@@ -248,18 +392,15 @@ export default function Accounts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {proxies.data.map((p) => (
-                    <ProxyRow
-                      key={p.id}
-                      proxy={p}
-                      onChange={proxies.reload}
-                      onError={setRowError}
-                    />
+                  {proxies.items.map((p) => (
+                    <ProxyRow key={p.id} proxy={p} onChange={reloadAll} onError={setRowError} />
                   ))}
                 </tbody>
               </table>
             ) : (
-              <Empty>No proxies yet.</Empty>
+              !proxies.loading && (
+                <Empty>{proxies.query ? "Nothing matches that search." : "No proxies yet."}</Empty>
+              )
             )}
           </div>
         </>

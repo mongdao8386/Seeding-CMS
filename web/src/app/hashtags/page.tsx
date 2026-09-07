@@ -74,7 +74,7 @@ export default function Hashtags() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value.replace(/[^A-Za-z0-9_-]/g, ""))}
-              placeholder="tech"
+              placeholder="ẩm thực"
               className="mono text-sm"
             />
           </Field>
@@ -96,7 +96,7 @@ export default function Hashtags() {
               rows={3}
               value={raw}
               onChange={(e) => setRaw(e.target.value)}
-              placeholder="#ai #startup #devtools"
+              placeholder="#ănngon #sàigòn #reviewquán #đồăn #foodtour"
               className="mono text-sm"
             />
           </Field>

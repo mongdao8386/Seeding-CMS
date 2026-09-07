@@ -152,3 +152,232 @@ def test_the_template_parses_cleanly_with_the_parser_that_reads_it():
 
 def test_the_template_has_no_unknown_columns():
     assert bulk.parse(bulk.template()).unknown_columns == []
+
+
+# ------------------------------------- dinh dang cua nguoi ban acc
+
+
+SELLER = """username|password|hotmail|pass_hotmail|cookie
+seed.fb.01|Matkhau123|abc@hotmail.com|Mailpass1|c_user=100012345; xs=41%3Aabc==
+seed.fb.02|Matkhau456|def@hotmail.com|Mailpass2|c_user=100067890; xs=41%3Adef==
+"""
+
+
+def test_the_pipe_delimiter_is_detected():
+    """File acc mua san gan nhu luon dung `|`. Bat nguoi dung doi sang dau phay con
+    lam hong du lieu: mat khau va cookie thuong CO dau phay ben trong."""
+    assert bulk.sniff_delimiter(SELLER) == "|"
+
+
+def test_a_comma_file_still_reads_as_a_comma_file():
+    assert bulk.sniff_delimiter("platform,handle\nreddit,a\n") == ","
+
+
+def test_a_single_column_file_falls_back_to_comma():
+    assert bulk.sniff_delimiter("handle\nseed_01\n") == ","
+
+
+def test_the_seller_format_imports_without_editing_the_file():
+    report = bulk.parse(SELLER, default_platform=Platform.FACEBOOK)
+    assert report.ok, [p.detail for p in report.problems]
+    assert len(report.rows) == 2
+    assert report.with_cookies == 2
+
+
+def test_seller_column_names_are_translated_and_reported():
+    """Doi ten am tham thi nguoi dung khong biet cot cua minh da di dau."""
+    report = bulk.parse(SELLER, default_platform=Platform.FACEBOOK)
+    assert report.renamed_columns["hotmail"] == "recovery_email"
+    assert report.renamed_columns["pass_hotmail"] == "recovery_password"
+    assert report.unknown_columns == []
+
+
+def test_username_doubles_as_the_handle_when_there_is_no_handle_column():
+    """`username` vua la dinh danh acc vua la mot truong bi mat cua Reddit, nen no
+    khong the doi thang thanh `handle`. Chi khi KHONG co cot handle nao thi no moi
+    dong ca hai vai."""
+    row = bulk.parse(SELLER, default_platform=Platform.FACEBOOK).rows[0]
+    assert row.handle == "seed.fb.01"
+    assert row.secrets["username"] == "seed.fb.01"
+
+
+def test_an_explicit_handle_column_wins_over_username():
+    report = bulk.parse(
+        "handle|username|password\nten_hien_thi|ten_dang_nhap|abc\n",
+        default_platform=Platform.FACEBOOK,
+    )
+    row = report.rows[0]
+    assert row.handle == "ten_hien_thi"
+    assert row.secrets["username"] == "ten_dang_nhap"
+
+
+def test_the_default_platform_fills_in_a_missing_column():
+    """Mot file 500 acc Facebook khong nen bat nguoi ta lap lai chu "facebook" 500 lan."""
+    report = bulk.parse(SELLER, default_platform=Platform.FACEBOOK)
+    assert all(r.platform is Platform.FACEBOOK for r in report.rows)
+
+
+def test_without_a_default_platform_the_column_is_still_required():
+    """Bo qua im lang thi 500 acc roi vao nen tang doan bua."""
+    report = bulk.parse(SELLER)
+    assert not report.ok
+    assert "platform" in report.problems[0].detail
+
+
+def test_a_platform_column_in_the_file_beats_the_default():
+    report = bulk.parse("platform|handle\nreddit|seed_01\n", default_platform=Platform.FACEBOOK)
+    assert report.rows[0].platform is Platform.REDDIT
+
+
+def test_the_recovery_mailbox_password_is_kept_as_a_secret():
+    """Thieu no thi den luc nen tang doi xac minh qua email la het duong."""
+    row = bulk.parse(SELLER, default_platform=Platform.FACEBOOK).rows[0]
+    assert row.secrets["recovery_password"] == "Mailpass1"
+
+
+def test_the_cookie_is_carried_but_not_parsed_during_the_check():
+    """Doc cookie luc kiem nghia la mot chuoi hong lam do ca file. De den luc tao."""
+    row = bulk.parse(SELLER, default_platform=Platform.FACEBOOK).rows[0]
+    assert row.cookie.startswith("c_user=")
+
+
+def test_a_row_without_a_cookie_is_not_counted_as_having_one():
+    report = bulk.parse(
+        "username|password|cookie\na|1|c_user=1; xs=2\nb|2|\n",
+        default_platform=Platform.FACEBOOK,
+    )
+    assert len(report.rows) == 2
+    assert report.with_cookies == 1
+
+
+def test_a_pasted_block_without_a_trailing_newline_still_reads():
+    """Dan tu trinh duyet hay thieu dau xuong dong cuoi. Mat dong cuoi ma khong bao
+    thi nguoi dung dem thieu mot acc va khong bao gio biet vi sao."""
+    dan = (
+        "username|password|cookie\n"
+        "a|1|c_user=1; xs=2\n"
+        "b|2|c_user=3; xs=4"  # khong co \n o cuoi
+    )
+    report = bulk.parse(dan, default_platform=Platform.FACEBOOK)
+    assert len(report.rows) == 2
+
+
+def test_windows_line_endings_do_not_leave_carriage_returns_in_values():
+    """Dan tu Notepad tren Windows ra \r\n. Sot lai \r trong cookie thi trinh duyet
+    tu choi ca danh sach."""
+    dan = "username|password|cookie\r\na|1|c_user=1; xs=2\r\n"
+    row = bulk.parse(dan, default_platform=Platform.FACEBOOK).rows[0]
+    assert "\r" not in row.cookie
+    assert "\r" not in row.secrets["password"]
+
+
+# ------------------------------------- buoc kiem phai THU DOC cookie
+
+
+def test_a_broken_cookie_is_caught_at_the_check_not_at_import():
+    """Ban dau buoc kiem chi DEM o cookie co chu hay khong roi bao "14 with a saved
+    session". Do la mot loi hua ma buoc tao khong giu duoc, va nguoi dung chi phat hien
+    ra khi bai dang dau tien that bai."""
+    report = bulk.parse(
+        "username|password|cookie\nhong|1|day-khong-phai-cookie\n",
+        default_platform=Platform.TIKTOK,
+    )
+    assert report.with_cookies == 0
+    assert report.cookie_problems == 1
+    assert "no cookies" in report.rows[0].cookie_note
+
+
+def test_device_only_cookies_do_not_count_as_a_session():
+    """`ttwid` va `tt_chain_token` co mat o moi lan tai trang, ke ca khi chua dang nhap.
+    Dem chung thanh "co phien" nghia la he thong tuong tai khoan san sang va giao viec
+    cho no."""
+    report = bulk.parse(
+        "username|password|cookie\nthietbi|1|ttwid=abc; tt_chain_token=xyz\n",
+        default_platform=Platform.TIKTOK,
+    )
+    assert report.with_cookies == 0
+    assert "sessionid" in report.rows[0].cookie_note
+
+
+def test_a_real_session_cookie_counts():
+    report = bulk.parse(
+        "username|password|cookie\ntot|1|sessionid=abc; sid_tt=xyz\n",
+        default_platform=Platform.TIKTOK,
+    )
+    assert report.with_cookies == 1
+    assert report.rows[0].cookie_note is None
+
+
+def test_a_row_with_no_cookie_is_not_counted_as_a_problem():
+    """Khong co cookie la chuyen binh thuong - dang nhap tay mot lan la xong. Dem no
+    thanh loi se lam nguoi dung di tim mot van de khong ton tai."""
+    report = bulk.parse("username|password|cookie\nkhongco|1|\n", default_platform=Platform.TIKTOK)
+    assert report.cookie_problems == 0
+    assert report.with_cookies == 0
+    assert report.ok
+
+
+def test_a_bad_cookie_does_not_stop_the_row_being_imported():
+    """Cookie hong chi mat mot buoc tien - tai khoan van tao duoc va van dang nhap tay
+    duoc. Chan ca dong lai thi mat luon ca mat khau da co."""
+    report = bulk.parse(
+        "username|password|cookie\nhong|1|rac\ntot|2|sessionid=a\n",
+        default_platform=Platform.TIKTOK,
+    )
+    assert report.ok
+    assert len(report.rows) == 2
+
+
+# ----------------------- dau phan cach nam TRONG gia tri
+
+
+TIKTOK_PIPE = (
+    "username|password|hotmail|pass_hotmail|cookie\n"
+    "user123|Mk1|a@h.com|Mp1|"
+    "sessionid=abc123; ttwid=1|d1OJOk51wovb|1783813285|7c21198edc\n"
+)
+
+
+def test_a_pipe_inside_the_cookie_does_not_lose_the_cookie():
+    """Truong hop THUONG GAP nhat voi acc TikTok: cookie `ttwid` chua dau `|` khong ma
+    hoa, dung bang dau phan cach cua file.
+
+    Truoc day csv gom phan thua vao khoa None va code bo di AM THAM: cot cookie chi
+    nhan duoc mau dau khong co dau `=`, roi bao "no cookies found in that value" - mot
+    cau khong noi gi ve nguyen nhan that.
+    """
+    report = bulk.parse(TIKTOK_PIPE, default_platform=Platform.TIKTOK)
+    assert report.ok
+    assert report.with_cookies == 1
+    assert report.rows[0].cookie_note is None
+
+
+def test_the_rejoined_cookie_keeps_every_piece():
+    row = bulk.parse(TIKTOK_PIPE, default_platform=Platform.TIKTOK).rows[0]
+    assert "sessionid=abc123" in row.cookie
+    assert "d1OJOk51wovb" in row.cookie
+    assert "7c21198edc" in row.cookie
+
+
+def test_rejoining_is_reported_rather_than_done_silently():
+    """Noi lai la mot phong doan hop ly, khong phai su that hien nhien. Nguoi dung
+    phai biet no da xay ra."""
+    assert bulk.parse(TIKTOK_PIPE, default_platform=Platform.TIKTOK).rejoined_rows == 1
+
+
+def test_a_normal_row_is_not_counted_as_rejoined():
+    report = bulk.parse(
+        "username|password|cookie\na|1|sessionid=x\n", default_platform=Platform.TIKTOK
+    )
+    assert report.rejoined_rows == 0
+
+
+def test_overflow_on_a_file_whose_last_column_is_not_cookie_is_an_error():
+    """Noi lai chi dung khi cot cuoi la chuoi tu do. Noi bua vao mot cot so thi tao ra
+    du lieu sai ma khong ai biet."""
+    report = bulk.parse(
+        "username|cookie|daily_cap\na|sessionid=x|3|thua|them\n",
+        default_platform=Platform.TIKTOK,
+    )
+    assert not report.ok
+    assert "more field" in report.problems[0].detail

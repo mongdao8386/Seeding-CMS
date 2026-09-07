@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     health_fail_threshold: int = 2
     # Mo trinh duyet an khi kiem tra suc khoe; dang nhap tay thi luon hien.
     headless_health_check: bool = True
+    # Mo trinh duyet an khi CHAY JOB (dang bai, hoat dong nen, tuong tac cheo).
+    # De True khi chay that: mot chuc phien hien cua so thi may khong dung duoc nua.
+    # Dat False khi can nhin mot job chay bang mat - lan dau chay tren tai khoan that,
+    # hoac khi selector khong khop va can biet trang dang hien cai gi.
+    headless_jobs: bool = True
 
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic

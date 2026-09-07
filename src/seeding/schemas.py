@@ -3,12 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from seeding.models import (
     AccountStatus,
     ActivityKind,
     BrowserEngine,
+    DeviceOS,
+    DeviceStatus,
     JobStatus,
     MediaKind,
     Platform,
@@ -54,6 +56,9 @@ class AccountOut(BaseModel):
     daily_cap: int
     warmup_started_at: datetime | None
     last_posted_at: datetime | None
+    # Dang bai duoc chua, va neu chua thi thieu gi. Xem core/readiness.py.
+    ready: bool = True
+    blocked_reason: str | None = None
 
 
 class ProxyIn(BaseModel):
@@ -81,6 +86,10 @@ class ProxyOut(BaseModel):
     sticky: bool
     status: ProxyStatus
     last_exit_ip: str | None
+    last_error: str | None
+    # Username KHONG phai bi mat, va giao dien can no de sua duoc: mot proxy tra ve 407
+    # vi thieu username thi khong co cach nao chua neu form sua khong hien o do.
+    username: str | None
     # Co y khong tra ve mat khau proxy.
 
 
@@ -412,12 +421,28 @@ class JobOut(BaseModel):
 
 
 class WindowIn(BaseModel):
-    """Khung gio thuc cua mot nen tang. Gio he thong, 0-23."""
+    """Khung gio thuc cua mot nen tang, cho mot hoac nhieu ngay trong tuan.
+
+    `weekdays` theo cach danh so cua Python: 0 = thu Hai ... 6 = Chu nhat. Gui nhieu
+    ngay mot lan vi thao tac thuc te hau nhu luon la "cac ngay trong tuan giong nhau,
+    cuoi tuan khac" - bat nguoi dung goi bay lan cho mot y dinh la lam sai cong cu.
+    """
 
     platform: Platform
+    weekdays: list[int] = Field(min_length=1, max_length=7)
     active_from_hour: int = Field(ge=0, le=23)
-    active_to_hour: int = Field(ge=0, le=23)
+    # 24 = nua dem ket thuc ngay. Khong co no thi khong dien ta duoc "den nua dem",
+    # ma do la khung gio binh thuong nhat cua buoi toi.
+    active_to_hour: int = Field(ge=1, le=24)
     note: str | None = None
+
+    @field_validator("weekdays")
+    @classmethod
+    def _valid_days(cls, value: list[int]) -> list[int]:
+        bad = [d for d in value if d < 0 or d > 6]
+        if bad:
+            raise ValueError(f"weekday must be 0 (Monday) to 6 (Sunday), got {bad}")
+        return sorted(set(value))
 
 
 class WindowOut(BaseModel):
@@ -425,6 +450,93 @@ class WindowOut(BaseModel):
 
     id: uuid.UUID
     platform: Platform
+    weekday: int
     active_from_hour: int
     active_to_hour: int
     note: str | None
+
+
+# ----------------------------------------------------------------- phan trang
+
+
+class Page[T](BaseModel):
+    """Mot trang ket qua, kem tong so that.
+
+    `total` la so ban ghi KHOP DIEU KIEN LOC, khong phai so ban ghi trong trang. Thieu
+    no thi giao dien khong ve duoc "51-100 cua 213", va nguoi dung khong bao gio biet
+    minh dang nhin mot phan hay toan bo - do la kieu cat bot am tham nguy hiem nhat.
+    """
+
+    items: list[T]
+    total: int
+    limit: int
+    offset: int
+
+    @property
+    def truncated(self) -> bool:
+        return self.offset + len(self.items) < self.total
+
+
+# ------------------------------------------------------------------ thiet bi
+
+
+class DeviceIn(BaseModel):
+    """Them mot may that vao he thong.
+
+    `serial` lay tu `adb devices`. No la thu duy nhat nhan dang duoc mot may khi cam
+    nhieu may cung luc - ten hien thi thi doi duoc, serial thi khong.
+    """
+
+    serial: str = Field(min_length=1, max_length=190)
+    label: str = Field(min_length=1, max_length=120)
+    os: DeviceOS = DeviceOS.ANDROID
+    account_id: uuid.UUID | None = None
+    proxy_id: uuid.UUID | None = None
+    note: str | None = None
+
+
+class DevicePatch(BaseModel):
+    label: str | None = None
+    account_id: uuid.UUID | None = None
+    proxy_id: uuid.UUID | None = None
+    note: str | None = None
+
+
+class DeviceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    serial: str
+    label: str
+    os: DeviceOS
+    model: str | None
+    os_version: str | None
+    status: DeviceStatus
+    last_seen_at: datetime | None
+    last_error: str | None
+    account_id: uuid.UUID | None
+    handle: str | None
+    proxy_label: str | None
+    note: str | None
+
+
+# ----------------------------------------------------------------- workspace
+
+
+class RenameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class WorkspaceOut(BaseModel):
+    """Workspace kem so thu no dang giu.
+
+    Con so nay khong phai de trang tri: xoa mot workspace keo theo persona, tai khoan,
+    profile va cookie jar cua chung. Nguoi dung phai thay minh sap mat gi TRUOC khi bam.
+    """
+
+    id: uuid.UUID
+    name: str
+    personas: int
+    accounts: int
+    campaigns: int
+    content: int

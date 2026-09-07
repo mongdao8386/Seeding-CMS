@@ -17,6 +17,7 @@ import structlog
 from seeding.browser import humanize
 from seeding.browser.checkpoints import Checkpoint, detect
 from seeding.browser.session import PROBES, open_profile
+from seeding.config import get_settings
 from seeding.models import ActivityKind, Platform, Profile
 
 log = structlog.get_logger(__name__)
@@ -47,7 +48,8 @@ async def run(
         return ActivityResult(False, "profile has never signed in")
 
     try:
-        async with open_profile(profile, headless=True, humanize=True) as (_b, context):
+        headless = get_settings().headless_jobs
+        async with open_profile(profile, headless=headless, humanize=True) as (_b, context):
             page = await context.new_page()
             await page.goto(probe.feed_url, wait_until="domcontentloaded", timeout=45_000)
 

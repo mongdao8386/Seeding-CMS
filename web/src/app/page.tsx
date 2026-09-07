@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { api, type CampaignSummary, type Stats, type Takeover } from "@/lib/api";
+import { api, type Page, type CampaignSummary, type Stats, type Takeover } from "@/lib/api";
 import { ErrorBox, Loading, PageHead, useLoad, when } from "@/components/ui";
 
 type Bundle = { stats: Stats; takeovers: Takeover[]; campaigns: CampaignSummary[] };
@@ -10,7 +10,8 @@ export default function Dashboard() {
   const { data, error, loading } = useLoad<Bundle>(async () => ({
     stats: await api.get<Stats>("/stats"),
     takeovers: await api.get<Takeover[]>("/takeovers"),
-    campaigns: await api.get<CampaignSummary[]>("/campaigns"),
+    // Trang tong quan chi can vai chien dich gan nhat, khong can het.
+    campaigns: (await api.get<Page<CampaignSummary>>("/campaigns?limit=8")).items,
   }));
 
   return (

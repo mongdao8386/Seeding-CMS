@@ -3,6 +3,22 @@
 import { useEffect, useState } from "react";
 import { api, token } from "@/lib/api";
 
+/**
+ * Bao cho phan con lai cua trang biet da co token dung duoc.
+ *
+ * WorkspaceProvider nam ngoai TokenGate (vi o chon workspace o tren header), nen no
+ * khong the doi TokenGate render xong roi moi goi API. Thieu tin hieu nay thi lan goi
+ * dau tien cua no roi vao luc chua co token, that bai, va o chon nam trong mai cho
+ * toi khi nguoi dung tai lai trang.
+ */
+export const AUTH_READY = "seeding:authenticated";
+
+function announceReady() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_READY));
+  }
+}
+
 type Health = { ok: boolean; authenticated: boolean };
 
 /** Chan toan bo dashboard cho toi khi co token dung duoc. */
@@ -31,6 +47,7 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
     try {
       await api.get("/stats"); // route that, de biet token co dung duoc khong
       setState("ready");
+      announceReady();
     } catch {
       setState("need-token");
     }
@@ -98,6 +115,7 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
             try {
               await api.get("/stats");
               setState("ready");
+              announceReady();
             } catch (err) {
               token.clear();
               setError(err instanceof Error ? err.message : "That token doesn't work");

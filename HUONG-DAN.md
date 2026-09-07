@@ -55,34 +55,50 @@ Kiểm tra mọi thứ chạy được:
 
 ## 2. Chạy hệ thống
 
-Cài phụ thuộc cho dashboard (làm một lần):
+**Bấm đúp `Start.cmd`.** Hết.
+
+Nó tự làm đủ thứ tự: bật Docker Desktop nếu đang tắt → chờ Postgres và Redis thật sự
+nhận kết nối → cập nhật schema → bật API, worker, dashboard → mở trình duyệt → in token
+ra để bạn dán.
+
+Hỏng ở bước nào thì nó **dừng lại ngay tại đó** kèm lệnh cần chạy để sửa, chứ không chạy
+tiếp. Bật API khi Postgres chưa sống thì lỗi hiện ra là `connection refused` ở một chỗ
+cách nguyên nhân thật ba tầng — cả buổi chiều đi tìm nhầm chỗ.
+
+Bấm `Start.cmd` lại khi đang chạy thì nó **không bật trùng**, và tự dọn những cửa sổ rỗng còn sót từ lần trước.
+
+Tắt: bấm **`Stop.cmd`**. Nó dừng ba tiến trình và các container, **không xoá dữ liệu**
+(dùng `docker compose stop` chứ không phải `down`, vì một lần gõ nhầm `down -v` là mất
+sạch cookie jar của mọi tài khoản).
+
+Vài tuỳ chọn, nếu cần:
 
 ```bash
-cd web; npm install; Copy-Item .env.local.example .env.local; cd ..
+Start.cmd -Dev        # dashboard chạy hot-reload, dùng khi đang sửa giao diện
+Start.cmd -Restart    # tắt sạch rồi bật lại
 ```
 
-Cần **ba cửa sổ terminal** chạy song song.
+Bấm `Start.cmd` lần nữa khi đang chạy thì nó không bật trùng — chỉ báo cái nào đã sống.
 
-Cửa sổ 1 — API:
+**Ba cửa sổ terminal vẫn còn**, thu nhỏ dưới thanh tác vụ: API, Worker, Dashboard. Cố ý
+để riêng — log của ba thứ đó là ba dòng khác nhau, trộn vào một cửa sổ thì lúc có sự cố
+không đọc được gì. Tiến trình nào chết thì cửa sổ của nó **ở lại** kèm thông báo lỗi.
+
+<details>
+<summary>Chạy tay từng lệnh (khi cần debug)</summary>
 
 ```bash
-.\.venv\Scripts\uvicorn seeding.api.main:app --reload
+docker compose up -d
+.\.venv\Scripts\alembic upgrade head
+.\.venv\Scripts\uvicorn seeding.api.main:app --reload     # cửa sổ 1
+.\.venv\Scripts\arq seeding.worker.settings.WorkerSettings # cửa sổ 2
+npm run dev --prefix web                                     # cửa sổ 3
 ```
 
-Cửa sổ 2 — worker (thứ thật sự đăng bài):
+</details>
 
-```bash
-.\.venv\Scripts\arq seeding.worker.settings.WorkerSettings
-```
-
-Cửa sổ 3 — dashboard:
-
-```bash
-npm run dev --prefix web
-```
-
-Rồi mở **`http://127.0.0.1:3000`**. Lần đầu nó hỏi token — dán giá trị `API_TOKEN` từ
-`.env` vào. Token được lưu trong trình duyệt đó, không gửi đi đâu khác. Đổi token thì
+Rồi mở **`http://127.0.0.1:3000`**. Lần đầu nó hỏi token — `Start.cmd` đã in sẵn ra màn
+hình để bạn dán. Token được lưu trong trình duyệt đó, không gửi đi đâu khác. Đổi token thì
 mọi trình duyệt đang mở phải nhập lại.
 
 Giao diện bằng **tiếng Anh**. Bảy màn hình:
@@ -168,6 +184,15 @@ $acc = Invoke-RestMethod -Headers $H -Method Post -Uri "$api/accounts" -ContentT
 dần qua `WARMUP_DAYS` (mặc định 14 ngày).
 
 ### 3.3. Soạn nội dung
+
+Ảnh và video thì **kéo thả thẳng vào khung Media** ngay trong màn hình Compose — nó tải
+lên và gắn vào bài trong một bước. Vẫn là cùng một kho: file vẫn hiện ở màn hình Media,
+vẫn được kiểm tra trước khi xoá, vẫn được render lại riêng cho từng tài khoản lúc đăng.
+Chỉ bỏ đi quãng đường đi lại.
+
+Một bài mang một file. Thả ba cái vào thì nó lấy cái đầu và **nói rõ** hai cái kia không
+được tải lên, thay vì im lặng bỏ.
+
 
 `title_template` và `body_template` dùng cú pháp spintax `{a|b|c}`, lồng nhau được. Mỗi
 tài khoản sẽ nhận một tổ hợp khác nhau:
@@ -402,6 +427,20 @@ thông báo rõ ràng.
 
 ---
 
+### 5.1. Workspace
+
+Bộ chọn **workspace** nằm trên thanh điều hướng, góc phải. Nó quyết định màn hình
+Accounts hiển thị tài khoản nào, và là giá trị mặc định cho form soạn bài, tạo chiến
+dịch, nhập CSV. Lựa chọn được nhớ lại khi bạn chuyển trang.
+
+Màn hình **Workspaces** đổi tên và xoá được, kèm số thứ mỗi cái đang giữ. Xoá một
+workspace còn tài khoản thì nó **từ chối** và nói rõ sắp mất gì — kể cả cookie jar, thứ
+chỉ lấy lại được bằng cách đăng nhập tay lại từng tài khoản.
+
+Proxy và thiết bị **không** thuộc workspace nào: chúng là hạ tầng dùng chung.
+
+---
+
 ## 6. Vận hành hằng ngày
 
 ### 6.0. Nhập tài khoản hàng loạt
@@ -415,8 +454,49 @@ reddit,seed_reddit_01,Sinh vien HN,3,yes,abc123,secret456,seed_reddit_01,hunter2
 facebook,seed.fb.01,Sinh vien HN,2,yes,,,,hunter2,JBSWY3DPEHPK3PXP,backup@example.com
 ```
 
-Bắt buộc: `platform`, `handle`. Còn lại tuỳ chọn. Nút *download a template* cho sẵn file
-mẫu. Persona chưa có sẽ được tạo tự động theo tên trong file.
+Bắt buộc: `platform`, `handle`. Còn lại tuỳ chọn. Persona chưa có sẽ được tạo tự động
+theo tên trong file.
+
+**Acc mua sẵn dùng thẳng, không phải sửa file.** Định dạng phổ biến
+
+```
+username|password|hotmail|pass_hotmail|cookie
+```
+
+nhập được nguyên xi. Hệ thống tự nhận ra ba thứ:
+
+| Nó tự làm | Vì sao |
+|---|---|
+| Đoán dấu phân cách `\|`, `;`, tab, `,` | File acc gần như luôn dùng `\|`. Bắt đổi sang dấu phẩy còn làm hỏng dữ liệu — mật khẩu và **cookie thường có dấu phẩy bên trong** |
+| `hotmail` → `recovery_email`, `pass_hotmail` → `recovery_password` | Tên cột của người bán, không phải tên của hệ thống |
+| Không có cột `handle` thì `username` đóng cả hai vai | `username` cũng là một trường bí mật của Reddit nên không đổi thẳng được |
+
+Không có cột `platform` thì chọn nền tảng ngay trên màn hình — một file 500 acc Facebook
+không nên bắt lặp lại chữ "facebook" 500 lần.
+
+Màn hình báo rõ cột nào đã được đọc thành cột nào, để bạn thấy mình không gõ nhầm.
+
+### Cookie: bỏ qua được bước đăng nhập tay
+
+Dòng nào có cột `cookie` sẽ được **tạo luôn profile kèm phiên đăng nhập** — không phải
+chạy `login_profile.py` cho acc đó nữa. Với vài trăm acc thì đây là bước chậm nhất trong
+cả quy trình, nên đó là lý do cột này tồn tại.
+
+Nhận cả ba dạng: chuỗi `ten=giatri; ten2=giatri2`, mảng JSON xuất từ tiện ích cookie,
+và storage state đầy đủ của Playwright.
+
+Tick **give each new profile a free, tested proxy** để mỗi profile nhận một proxy còn
+rảnh — *một acc, một proxy, không dùng chung*. Không đủ proxy thì nó nói rõ còn thiếu
+bao nhiêu chứ không im lặng để trống.
+
+> **Cookie hợp lệ về cú pháp không có nghĩa là nó còn sống.** Cookie được cấp cho *một*
+> thiết bị tại *một* địa chỉ. Dán nó vào profile có fingerprint khác và đi ra bằng proxy
+> khác chính là tình huống mà nền tảng dùng cookie để phát hiện. Gắn proxy cùng quốc gia
+> với acc, và chuẩn bị tinh thần một phần rơi vào hàng đợi tiếp quản.
+
+Hệ thống kiểm giúp phần kiểm được: thiếu cookie phiên (`c_user`/`xs` với Facebook,
+`sessionid` với Instagram…) thì nó **báo ngay lúc nhập** thay vi để bạn phát hiện lúc
+đăng bài hỏng.
 
 Nhấn chọn file thì hệ thống **kiểm trước, chưa tạo gì**: bạn thấy danh sách dòng hợp lệ
 và toàn bộ dòng hỏng kèm số dòng khớp với Excel. Có một dòng hỏng là mặc định không nhập
@@ -490,7 +570,16 @@ tảng và lý do; **không bao giờ có mật khẩu, mã 2FA hay cookie**.
 
 ### 6.3. Đặt khung giờ thức cho từng nền tảng
 
-Màn hình **Hours**. Nền tảng nào không đặt riêng thì chạy 7h–23h theo giờ máy chủ.
+Màn hình **Hours**. Bấm *edit* ở một nền tảng để mở ra bảy ngày trong tuần.
+
+Ba nút đặt nhanh: **all week**, **Mon–Fri**, **Sat–Sun**. Rồi sửa lại từng ngày nếu cần.
+Ngày nào không đặt riêng thì chạy 7h–23h theo giờ máy chủ.
+
+Đặt cuối tuần khác ngày thường không phải để cho đẹp: người thật không thức dậy và đi ngủ
+đúng một khung giờ bảy ngày liền, và dùng chung một khung cho cả tuần cũng là một mẫu
+hình — chỉ kín đáo hơn.
+
+Giờ kết thúc chọn được **24:00** nghĩa là chạy đến nửa đêm.
 
 Giờ cao điểm của TikTok và Facebook khác hẳn nhau, và một tài khoản hoạt động lệch hẳn
 với nhịp của nền tảng đó là một dấu vết. Khung này chi phối **hoạt động nền** (cuộn feed,
@@ -511,12 +600,133 @@ có ích. Hàng nào dưới 12 tài khoản bị làm mờ: với 8 tài khoả
 khoản bị đẩy mạnh nhất. Bảng nói lên tương quan, không phải nguyên nhân.
 
 
+### 6.5. Chạy được bao nhiêu tài khoản trên một máy
+
+Con số này không phải cảm tính — nó tính ra được từ chính hằng số trong code.
+
+Mỗi bài đăng kéo theo **6 lần hoạt động nền** (`ACTIVITY_PER_POST`), mỗi lần trung bình
+**132 giây** trình duyệt thật. Worker chạy tối đa **5 phiên song song** (`max_jobs`), và
+khung giờ thức mặc định là 16 tiếng. Ngân sách một ngày vì thế là **288.000 giây trình
+duyệt**.
+
+| Số acc | daily_cap | Job nền/ngày | Giờ trình duyệt | % ngân sách |
+|---:|---:|---:|---:|---:|
+| 50 | 2 | 600 | 24,6h | 31% |
+| 50 | 3 | 900 | 36,9h | 46% |
+| 100 | 2 | 1.200 | 49,2h | 61% |
+| 100 | 3 | 1.800 | 73,8h | **92% — sát trần** |
+| 150 | 3 | 2.700 | 110,6h | **138% — quá tải** |
+| 200 | 3 | 3.600 | 147,5h | **184% — quá tải** |
+
+**Trần thực tế của một máy: khoảng 100 tài khoản với cap 3, hoặc 150 với cap 2.**
+
+Quá tải không báo lỗi gì cả — job chỉ đơn giản là chạy trễ dần, rồi tràn ra ngoài khung
+giờ thức. Đó là kiểu hỏng tệ nhất: tài khoản bắt đầu hoạt động lúc 2 giờ sáng, đúng thứ
+mà cả hệ thống này dựng ra để tránh.
+
+Ba thứ khác cũng chạm trần quanh mốc đó:
+
+- **Kiểm tra sức khoẻ**: 10 acc mỗi giờ = 240 lượt/ngày. Với chu kỳ 12 tiếng thì mỗi acc
+  cần 2 lượt/ngày → quá **120 tài khoản** là lịch kiểm tra bắt đầu trễ.
+- **RAM**: 5 phiên song song × ~400MB = **2GB** chỉ riêng trình duyệt.
+- **Proxy**: một acc ↔ một proxy, **không bao giờ xoay**. 100 acc là 100 proxy. Đây
+  thường là khoản đắt nhất, và không có cách lách nào mà không đánh đổi bằng tài khoản.
+
+Muốn vượt trần thì tăng `max_jobs` trong `worker/settings.py` (đổi bằng RAM), hoặc chạy
+worker thứ hai trên máy khác cùng trỏ về một Postgres/Redis. Job được giành bằng câu
+`UPDATE ... WHERE status = SCHEDULED` nguyên tử, nên nhiều worker không giẫm chân nhau.
+
+Màn hình Accounts, Schedule và Compose đều **phân trang 50 dòng** kèm ô tìm kiếm và bộ
+lọc (nền tảng, trạng thái). Số trên tab là **tổng thật**, không phải số dòng đang hiện.
+
+Hai danh sách cố ý **không** phân trang, vì chúng là hàng đợi việc phải làm chứ không
+phải bảng để duyệt: *No profile yet* và *Sign in by hand*. Một hàng đợi chỉ hiện trang
+đầu thì những tài khoản ở trang hai sẽ nằm đó mãi.
+
+
+### 6.6. Tương tác chéo: follow, thả cảm xúc, chia sẻ lại
+
+Màn hình **Network**. Bấm *Grow the graph a little* để thêm vài lượt theo dõi giữa các
+tài khoản của bạn.
+
+Một bài không có tương tác nào thì không lan được — nhưng đây cũng là thứ dễ mất cả cụm
+nhất. Nền tảng bắt trại tài khoản bằng **đồ thị hành vi** dễ hơn nhiều so với fingerprint:
+fingerprint hỏng thì mất một acc, đồ thị hỏng thì một acc bị gắn cờ sẽ dẫn ra tất cả
+những acc còn lại.
+
+Nên hệ thống **không cho** bạn tạo ra các hình dạng lộ liễu, và không có nút tắt:
+
+- Tối đa **8 cạnh mới mỗi ngày** trên toàn hệ thống. Đồ thị phải lớn lên từ từ.
+- Mật độ tối đa **15%** (từ 10 tài khoản trở lên). Đồ thị dày là vật thể không tồn tại
+  trong tự nhiên.
+- Một tài khoản theo dõi tối đa **12** tài khoản nội bộ — không ai được thành trung tâm.
+- Chỉ ~25% lượt theo dõi được đáp lại.
+- Khi một bài lên, chỉ **một phần** người theo dõi tương tác, **sau ít nhất 18 phút**, rải
+  trong nhiều giờ. Chia sẻ lại rất hiếm (6%).
+
+Reddit không nằm trong đồ thị — nó đi bằng API, không có profile trình duyệt.
+
+Cạnh mới tạo ở trạng thái **planned**. Nó chỉ thành **done** khi worker mở trình duyệt,
+bấm được, và **thấy nút đổi thành Following**. Không thấy thì báo thất bại — vì nếu coi
+cạnh chưa bấm là đã xong, mọi con số mật độ ở trên đều sai.
+
+> **Con số hệ thống không đo được:** nó chỉ thấy cạnh giữa các tài khoản của bạn. Nó
+> không biết mỗi acc theo dõi bao nhiêu người **thật** bên ngoài — mà đó mới là tỷ lệ
+> quan trọng nhất. Theo dõi 8 acc nội bộ và 300 người thật là bình thường; cùng 8 cạnh đó
+> mà không theo dõi ai khác thì là cái bẫy. Trong database hai trường hợp giống hệt nhau.
+> Cảnh báo này luôn hiện trên màn hình Network, cố ý.
+
+
+### 6.7. Điện thoại thật (Android)
+
+Tab **Devices** trong màn hình Accounts.
+
+Trước hết bấm *Scan for phones*. Nó nói ngay còn thiếu gì — **tất cả** cùng lúc, không
+phải từng thứ một:
+
+1. `adb` chưa có trong PATH → cài [Android Platform Tools](https://developer.android.com/tools/releases/platform-tools)
+2. Appium chưa cài → `pip install Appium-Python-Client`
+3. Máy chưa bật USB debugging, hoặc chưa bấm *cho phép*
+
+Máy đang cắm mà chưa đăng ký sẽ hiện trong phần *Not registered yet*. Bấm **Add device**,
+dán serial vào. Hệ thống **không tự thêm** — một cái điện thoại cắm vào để sạc cũng hiện
+ra trong `adb devices`.
+
+Rồi gán mỗi máy cho một tài khoản và một proxy. Ràng buộc giống hệt bên profile: **một
+acc, một máy, một proxy, không xoay.**
+
+> **iOS thì không chạy được trên Windows.** Không phải thiếu công sức: tự động hoá app
+> iOS bắt buộc phải ký WebDriverAgent bằng Xcode (chỉ có trên macOS), và iOS Simulator
+> không cài được app từ App Store. Muốn iOS thật thì cần máy Mac và iPhone thật.
+
+**Phần điều khiển app chưa chạy được** — mở app, gõ, bấm đăng nằm ở `adapters/android.py`
+và cần Appium. Hiện tại tab này quản lý được thiết bị, chưa đăng bài qua chúng được.
+
+
 ---
 
 ## 7. Khi có sự cố
 
 | Triệu chứng | Nguyên nhân thường gặp |
 |---|---|
+| `Start.cmd` dừng ở *Khong co file .env* | Chưa cấu hình lần đầu. Nó in sẵn ba lệnh cần chạy |
+| `Start.cmd` dừng ở *Postgres khong len* | Docker Desktop có vấn đề. `docker compose logs postgres` |
+| Bấm `Start.cmd` mà cửa sổ nhấp nháy rồi tắt | Chạy nó từ terminal để đọc lỗi: `.\Start.cmd` |
+| Script cũ gọi `/accounts` bị lỗi | API giờ trả `{items, total, limit, offset}` chứ không phải mảng trần. Đổi thành `.items` |
+| Ô chọn tài khoản thiếu acc | Nó chỉ tải 200 cái đầu khớp bộ lọc — gõ vào ô tìm kiếm để thu hẹp |
+| `no interaction recipe for <nền tảng> yet` | Chưa có công thức follow cho nền tảng đó trong `browser/interact.py` |
+| `clicked follow but the button never changed` | Selector đúng nhưng chưa xác nhận được. Kiểm tay rồi sửa `RECIPES` |
+| Bấm *Grow the graph* mà tạo 0 cạnh | Đã chạm trần mật độ, hoặc nền tảng đó chưa đủ 2 acc còn sống |
+| Máy hiện `unauthorized` | Chưa bấm *cho phép gỡ lỗi USB* trên màn hình điện thoại |
+| `adb is not on PATH` | Cài Android Platform Tools rồi thêm vào PATH, mở lại terminal |
+| Worker chết với `UnicodeEncodeError` | Đã sửa — console Windows là cp1252, `_force_utf8_output()` ép UTF-8. Nếu vẫn gặp thì báo |
+| `NotInstalledGeoIPExtra` khi mở profile | Thiếu extra geoip. `pip install -e .` là đủ — nó đã nằm trong `pyproject.toml` |
+| `InvalidIP: Failed to get IP address` | Proxy của profile đó chết. **Đây là hành vi đúng**: hệ thống từ chối mở còn hơn chạy bằng IP thật của bạn. Sửa proxy hoặc bỏ gán nó |
+| Ô *Workspace* chọn xong không thấy đổi gì | Đã sửa — trước đây danh sách persona không lọc theo workspace nên ô đó không điều khiển gì |
+| Ô chọn workspace đầy dòng *Library test* | Rác do bộ test cũ để lại. Vào màn hình **Workspaces** xoá; fixture giờ tự dọn |
+| Thanh tác vụ đầy cửa sổ *Seeding - API* giống nhau | Đã sửa. Cửa sổ mở bằng `/k` để khi sập còn đọc được lỗi, nhưng `Stop.cmd` cũ chỉ giết tiến trình theo cổng nên vỏ cmd ở lại. Giờ nó đóng cả cây, và `Start.cmd` tự dọn vỏ rỗng |
+| Nhập CSV báo `has no persona, and no default was given` | File không có cột `persona`. Chọn một persona mặc định ở ô *Persona for rows that name none* |
+| Acc nhập bằng cookie nhưng vẫn như chưa đăng nhập | Cookie chỉ có phần thiết bị (`datr`, `sb`) chứ không có phần phiên. Bản kiểm có báo — đọc phần cảnh báo màu vàng |
 | API trả 401 | Thiếu hoặc sai `Authorization: Bearer <API_TOKEN>`. Trên dashboard thì bấm *sign out* rồi nhập lại |
 | API trả 503 `Chua dat API_TOKEN` | Chưa sinh token. Chạy `gen_api_token.py`, dán vào `.env`, khởi động lại API |
 | API trả 422 | Payload lồng nhau mà quên `-Depth 5` khi `ConvertTo-Json` |

@@ -12,7 +12,7 @@ from seeding.core.activity import (
     _pick_kind,
     _slots,
 )
-from seeding.models import ActivityKind
+from seeding.models import TARGETED_KINDS, ActivityKind
 
 DAY = date(2026, 8, 22)
 
@@ -57,12 +57,50 @@ def test_browsing_the_feed_is_the_most_common_activity():
     assert counts[ActivityKind.BROWSE_FEED] > counts[ActivityKind.WATCH_VIDEO]
 
 
-def test_every_kind_shows_up_eventually():
+def test_every_ambient_kind_shows_up_eventually():
     rng = random.Random(10)
     seen = {_pick_kind(rng) for _ in range(4000)}
-    assert seen == set(ActivityKind)
+    assert seen == set(ActivityKind) - TARGETED_KINDS
+
+
+def test_random_activity_never_follows_or_reposts_anyone():
+    """Theo doi, tha cam xuc vao mot bai cu the, chia se lai - ba viec nay tao ra CANH
+    trong do thi tai khoan, va do thi moi la thu lam ca cum chet cung mot lan.
+
+    Chung phai do core/graph.py quyet dinh theo luat mat do, khong bao gio duoc roi ra
+    tu mot phep random. Mot cai bat tay ngau nhien giua hai acc cua minh la mot canh
+    khong ai co y tao ra, va no o lai vinh vien.
+    """
+    rng = random.Random(11)
+    for _ in range(4000):
+        assert _pick_kind(rng) not in TARGETED_KINDS
 
 
 def test_there_is_much_more_ambient_activity_than_posting():
     """Ty le nay la ca diem cua he thong con - dat qua thap thi vo nghia."""
     assert ACTIVITY_PER_POST >= 5
+
+
+# ----------------------------------------------------- khung gio den nua dem
+
+
+def test_a_window_can_run_to_midnight():
+    """`time(24, 0)` khong ton tai trong Python. Neu khung gio chi dung `time` thi
+    khong co cach nao dien ta "hoat dong den nua dem" - ma do la khung gio binh
+    thuong nhat cua buoi toi, va nguoi dung se tuong minh go sai.
+    """
+    from seeding.core.activity import _at
+
+    start = _at(DAY, 18)
+    end = _at(DAY, 24)
+    slots = _slots(DAY, 10, random.Random(21), start, end)
+
+    assert len(slots) == 10
+    assert all(start <= when <= end for when in slots)
+    assert end.day == DAY.day + 1, "gio 24 phai la nua dem sang ngay hom sau"
+
+
+def test_hour_zero_to_twentyfour_covers_the_whole_day():
+    from seeding.core.activity import _at
+
+    assert (_at(DAY, 24) - _at(DAY, 0)).total_seconds() == 24 * 3600

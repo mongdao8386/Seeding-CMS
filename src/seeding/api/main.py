@@ -7,6 +7,11 @@ from seeding.api.routes import router
 from seeding.api.routes_library import router as library_router
 from seeding.api.security import require_token
 from seeding.config import get_settings
+from seeding.worker.settings import _force_utf8_output
+
+# Cung ly do nhu trong worker: console Windows la cp1252, va mot thong bao loi tieng
+# Viet se lam do request thay vi tra ve loi.
+_force_utf8_output()
 
 app = FastAPI(
     title="Seeding CMS",

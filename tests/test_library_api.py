@@ -32,13 +32,18 @@ async def client():
 
 @pytest.fixture(scope="module")
 async def workspace(client):
-    """Mot workspace cho ca module, khong phai moi test mot cai.
+    """Mot workspace cho ca module, va DON no khi xong.
 
-    Fixture cu tao mot workspace moi cho tung test va khong bao gio don, nen sau vai
-    lan chay thi o chon workspace tren giao dien day nhung dong "Library test".
+    Ban dau fixture tao mot workspace moi cho tung test va khong bao gio don. Sua thanh
+    module-scope thi bot di, nhung van con mot cai moi lan chay - sau vai lan thi o chon
+    workspace tren giao dien day nhung dong "Library test" ma nguoi dung khong xoa duoc.
+
+    Nen bay gio no tu don. `force=true` la co y: workspace nay chi chua do cua test.
     """
     r = await client.post("/workspaces", json={"name": "Library test"})
-    return r.json()["id"]
+    workspace_id = r.json()["id"]
+    yield workspace_id
+    await client.delete(f"/workspaces/{workspace_id}?force=true")
 
 
 @pytest.fixture

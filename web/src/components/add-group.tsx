@@ -1,22 +1,32 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, type Account } from "@/lib/api";
-import { Field } from "@/components/ui";
+import { api, qs, type Account, type Page } from "@/lib/api";
+import { Field, SearchBox } from "@/components/ui";
 
 const PLATFORMS = ["reddit", "threads", "x", "youtube", "instagram", "facebook", "tiktok"];
 
-/** Them mot nhom vao chien dich da co, roi lap lich rieng cho no. */
+/**
+ * Them mot nhom vao chien dich da co, roi lap lich rieng cho no.
+ *
+ * Truoc day day la mot popover `absolute` nam trong cot Groups. Cot do rong 300px, con
+ * bang nay rong 320px, va the card boc ngoai co `overflow-hidden` de bo goc - nen form
+ * bi CAT MAT mot nua va khong dung duoc.
+ *
+ * Gio no la mot panel toan chieu rong, dat tren ba cot, giong het form tao chien dich.
+ * Khong con gi de cat, va co du cho cho danh sach tai khoan.
+ */
 export function AddGroup({
   campaignId,
   onDone,
+  onClose,
   onError,
 }: {
   campaignId: string;
   onDone: () => void;
+  onClose: () => void;
   onError: (e: unknown) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [name, setName] = useState("");
   const [platform, setPlatform] = useState("threads");
@@ -24,39 +34,43 @@ export function AddGroup({
   const [postKind, setPostKind] = useState<"post" | "comment">("post");
   const [targetUrl, setTargetUrl] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [matching, setMatching] = useState(0);
   const [busy, setBusy] = useState(false);
 
+  // Loc o server. O muc vai tram tai khoan, tai het ve roi loc o day la keo ca danh
+  // sach qua mang de hien ra vai dong.
   useEffect(() => {
-    if (open) api.get<Account[]>("/accounts").then(setAccounts).catch(onError);
+    const timer = setTimeout(() => {
+      api
+        .get<Page<Account>>(`/accounts${qs({ platform, q: search, limit: 200 })}`)
+        .then((p) => {
+          setAccounts(p.items);
+          setMatching(p.total);
+        })
+        .catch(onError);
+    }, 200);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [platform, search]);
 
+  // Chi acc san sang: profile + proxy + phien dang nhap. Xem core/readiness.py.
   const candidates = useMemo(
-    () => accounts.filter((a) => a.platform === platform && a.status !== "dead"),
-    [accounts, platform],
+    () => accounts.filter((a) => a.status !== "dead" && a.ready),
+    [accounts],
   );
-
-  if (!open) {
-    return (
-      <button className="btn btn-ghost text-xs" onClick={() => setOpen(true)}>
-        add group
-      </button>
-    );
-  }
+  const blockedCount = accounts.filter((a) => a.status !== "dead" && !a.ready).length;
 
   return (
-    <div
-      className="card absolute right-0 z-10 mt-2 w-80 p-3"
-      style={{ boxShadow: "0 8px 30px -12px rgba(0,0,0,.5)" }}
-    >
-      <div className="mb-2 flex items-center justify-between">
+    <div className="card mb-4 p-4">
+      <div className="mb-3 flex items-center justify-between">
         <span className="label">New group</span>
-        <button className="btn btn-ghost text-xs" onClick={() => setOpen(false)}>
+        <button className="btn btn-ghost text-xs" onClick={onClose}>
           close
         </button>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="threads side" />
         </Field>
@@ -109,11 +123,20 @@ export function AddGroup({
         )}
 
         <div>
-          <span className="label mb-1 block">
-            Accounts — {picked.size} of {candidates.length}
-          </span>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="label">Accounts — {picked.size} picked</span>
+            <SearchBox value={search} onChange={setSearch} placeholder="search…" />
+          </div>
+          {matching > candidates.length && (
+            <p className="faint mb-1 text-xs">
+              Showing {candidates.length} of {matching} — search to reach the rest.
+            </p>
+          )}
           {candidates.length === 0 ? (
-            <p className="faint text-xs">No {platform} accounts.</p>
+            <p className="faint text-xs">
+              No {platform} account is ready
+              {blockedCount > 0 ? ` (${blockedCount} need a proxy or a sign-in)` : ""}.
+            </p>
           ) : (
             <div className="flex flex-wrap gap-1" style={{ maxHeight: 120, overflowY: "auto" }}>
               {candidates.map((a) => {
@@ -165,7 +188,7 @@ export function AddGroup({
                       : {},
                 account_ids: [...picked],
               });
-              setOpen(false);
+              onClose();
               setName("");
               setPicked(new Set());
               onDone();

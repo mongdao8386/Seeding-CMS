@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   api,
+  qs,
   type ContentItem,
   type HashtagSet,
   type MediaAsset,
@@ -17,19 +18,26 @@ import {
   ErrorBox,
   Field,
   PageHead,
+  Pager,
+  SearchBox,
   humanDuration,
   useLoad,
+  usePaged,
   when,
 } from "@/components/ui";
+import { useWorkspace } from "@/components/workspace";
 
 const SAMPLE_TITLE = "{Just tried|Been testing|Gave a spin to} a {scheduling|posting} tool";
 const SAMPLE_BODY =
   "{I've|I have} been {using|running} it for {a few days|a week} now and {it's solid|it holds up}. {Anyone else?|Has anyone tried it?}";
 
 export default function Compose() {
+  const workspace = useWorkspace();
   const [title, setTitle] = useState(SAMPLE_TITLE);
   const [body, setBody] = useState(SAMPLE_BODY);
   const [mediaRef, setMediaRef] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [count, setCount] = useState(5);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -39,7 +47,9 @@ export default function Compose() {
   const [saved, setSaved] = useState<string | null>(null);
 
   const workspaces = useLoad<Named[]>(() => api.get("/workspaces"));
-  const items = useLoad<ContentItem[]>(() => api.get("/content"));
+  const items = usePaged<ContentItem>("/content", ({ limit, offset, q }) =>
+    `/content${qs({ limit, offset, q })}`,
+  );
   const media = useLoad<MediaAsset[]>(() => api.get("/media"));
   const pools = useLoad<HashtagSet[]>(() => api.get("/hashtag-sets"));
   const [workspaceId, setWorkspaceId] = useState("");
@@ -69,6 +79,45 @@ export default function Compose() {
     }, 350);
     return () => clearTimeout(timer);
   }, [title, body, count, workspaceId]);
+
+  /**
+   * Tai file len roi gan LUON vao bai dang.
+   *
+   * Truoc day phai sang man hinh Media tai len, quay lai Compose, roi tim trong o
+   * chon. Ba buoc cho mot viec, va o chon thi cang dai ra sau moi lan tai.
+   *
+   * Van la cung mot kho media chu khong phai kho rieng: file van hien o man hinh
+   * Media, van bi kiem tra truoc khi xoa, van duoc render lai rieng cho tung tai
+   * khoan luc dang. Chi bo di quang duong di lai.
+   */
+  async function uploadAndAttach(files: FileList | File[] | null) {
+    const list = files ? Array.from(files) : [];
+    const file = list[0];
+    if (!file || !workspaceId) return;
+
+    // Mot bai mot file. Tha ba file vao thi lay cai dau va noi ro, thay vi im lang
+    // bo hai cai kia.
+    setUploading(true);
+    setError(null);
+    try {
+      const asset = await api.upload<MediaAsset>(`/media?workspace_id=${workspaceId}`, file);
+      setMediaRef(asset.filename);
+      await media.reload();
+      if (list.length > 1) {
+        setError(
+          new Error(
+            `Attached ${file.name}. A post carries one file, so the other ${list.length - 1} ` +
+              "were not uploaded — put them in the Media library if you need them.",
+          ),
+        );
+      }
+    } catch (e) {
+      setError(e);
+    } finally {
+      setUploading(false);
+      setDragging(false);
+    }
+  }
 
   const chosenMedia = useMemo(
     () => (media.data ?? []).find((m) => m.filename === mediaRef) ?? null,
@@ -171,6 +220,7 @@ export default function Compose() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="mono text-sm"
+              placeholder="{Chào|Xin chào} mọi người, {mình|em} vừa tìm được {chỗ này|quán này}"
             />
           </Field>
 
@@ -181,6 +231,10 @@ export default function Compose() {
               value={body}
               onChange={(e) => setBody(e.target.value)}
               className="mono text-sm"
+              placeholder={
+                "{Ăn ở đây|Ghé đây} {mấy lần rồi|hôm qua}, {ngon thật|ổn áp phết}. " +
+                "{Ai quan tâm thì|Bạn nào cần thì} nhắn mình nhé.\n\n[[tags:ẩm thực:3]]"
+              }
             />
           </Field>
 
@@ -251,14 +305,60 @@ export default function Compose() {
                 </button>
               </div>
             ) : (
-              <select value="" onChange={(e) => setMediaRef(e.target.value || null)}>
-                <option value="">— no media —</option>
-                {(media.data ?? []).map((m) => (
-                  <option key={m.id} value={m.filename}>
-                    {m.original_name} ({m.kind})
-                  </option>
-                ))}
-              </select>
+              <>
+                <label
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    uploadAndAttach(e.dataTransfer.files);
+                  }}
+                  className="flex cursor-pointer flex-col items-center justify-center rounded p-5 text-center"
+                  style={{
+                    border: `1px dashed ${dragging ? "var(--a)" : "var(--rule-strong)"}`,
+                    background: dragging ? "var(--a-soft)" : "transparent",
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    disabled={uploading || !workspaceId}
+                    onChange={(e) => uploadAndAttach(e.target.files)}
+                  />
+                  <span className="text-sm">
+                    {uploading
+                      ? "Uploading…"
+                      : dragging
+                        ? "Drop to attach"
+                        : "Drop an image or video here, or click to pick one"}
+                  </span>
+                  <span className="faint mt-1 text-xs">
+                    It goes into the Media library and attaches to this post in one step.
+                  </span>
+                </label>
+
+                {(media.data?.length ?? 0) > 0 && (
+                  <div className="mt-2">
+                    <span className="label">or reuse something already uploaded</span>
+                    <select
+                      className="mt-1"
+                      value=""
+                      onChange={(e) => setMediaRef(e.target.value || null)}
+                    >
+                      <option value="">— no media —</option>
+                      {(media.data ?? []).map((m) => (
+                        <option key={m.id} value={m.filename}>
+                          {m.original_name} ({m.kind})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
             )}
             <p className="faint mt-1 text-xs">
               Instagram and TikTok refuse text-only posts.
@@ -384,9 +484,21 @@ export default function Compose() {
         </div>
       </div>
 
-      <h2 className="mb-3 mt-10 text-sm font-semibold">Saved content</h2>
+      <div className="mb-3 mt-10 flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">Saved content</h2>
+        <SearchBox value={items.query} onChange={items.setQuery} placeholder="search text…" />
+        <div className="ml-auto">
+          <Pager
+            total={items.total}
+            offset={items.offset}
+            pageSize={items.pageSize}
+            onGoto={items.goto}
+            noun="item"
+          />
+        </div>
+      </div>
       <div className="card overflow-x-auto">
-        {items.data?.length ? (
+        {items.items.length ? (
           <table className="grid">
             <thead>
               <tr>
@@ -398,7 +510,7 @@ export default function Compose() {
               </tr>
             </thead>
             <tbody>
-              {items.data.map((c) => (
+              {items.items.map((c: ContentItem) => (
                 <tr key={c.id}>
                   <td className="mono max-w-md truncate text-xs">{c.title_template}</td>
                   <td className="mono text-xs">{c.media_ref ?? "—"}</td>

@@ -34,9 +34,11 @@ ACTIVITY_PER_POST = 6
 # Gio thuc mac dinh (theo UTC cua he thong). Tai khoan hoat dong luc 4 gio sang moi
 # ngay la bat thuong ro hon la tai khoan it hoat dong.
 #
-# Moi nen tang ghi de duoc bang bang platform_windows: gio cao diem cua TikTok va
-# Facebook khac han nhau, va mot tai khoan hoat dong lech han voi nhip cua nen tang do
-# la mot dau vet - it ro hon fingerprint, nhung van la mot dau vet.
+# Ghi de duoc theo TUNG NGAY TRONG TUAN qua bang platform_windows. Hai ly do:
+#   - Gio cao diem cua TikTok va Facebook khac han nhau, va mot tai khoan hoat dong
+#     lech han voi nhip cua nen tang do la mot dau vet.
+#   - Nguoi that khong thuc day va di ngu dung mot khung gio bay ngay lien. Dung mot
+#     khung cho ca tuan cung la mot mau hinh, chi la kin dao hon gio 3 gio sang.
 ACTIVE_FROM = time(7, 0)
 ACTIVE_TO = time(23, 0)
 
@@ -67,30 +69,54 @@ def _pick_kind(rng: random.Random) -> ActivityKind:
     return ActivityKind.BROWSE_FEED
 
 
-async def window_for(session: AsyncSession, platform: Platform) -> tuple[time, time]:
-    """Khung gio thuc cua mot nen tang. Khong co ban ghi thi dung mac dinh."""
+def _at(day: date, hour: int) -> datetime:
+    """Moc thoi gian cua `hour` trong `day`.
+
+    Nhan ca gio 24 = nua dem ket thuc ngay. `time(24, 0)` khong ton tai trong Python,
+    nen neu chi dung `time` thi khong co cach nao dien ta "hoat dong den nua dem" - va
+    do la khung gio binh thuong nhat cua buoi toi.
+    """
+    return datetime.combine(day, time.min, tzinfo=UTC) + timedelta(hours=hour)
+
+
+async def window_for(
+    session: AsyncSession, platform: Platform, day: date
+) -> tuple[datetime, datetime]:
+    """Khung gio thuc cua mot nen tang trong MOT NGAY cu the, da thanh moc thoi gian.
+
+    Tra cuu theo (nen tang, thu trong tuan). Khong co ban ghi thi dung mac dinh.
+
+    Nhan `day` chu khong tu lay hom nay: ham lap lich chay truoc mot ngay, va lay nham
+    thu cua hom nay de rai lich cho ngay mai la mot loi khong bao gio lo ra thanh loi -
+    lich van duoc tao, chi la sai gio, va no lang le lam mong tai khoan di.
+    """
     row = (
-        await session.execute(select(PlatformWindow).where(PlatformWindow.platform == platform))
+        await session.execute(
+            select(PlatformWindow).where(
+                PlatformWindow.platform == platform,
+                PlatformWindow.weekday == day.weekday(),
+            )
+        )
     ).scalar_one_or_none()
     if row is None:
-        return ACTIVE_FROM, ACTIVE_TO
-    return time(row.active_from_hour, 0), time(row.active_to_hour, 0)
+        return _at(day, ACTIVE_FROM.hour), _at(day, ACTIVE_TO.hour)
+    return _at(day, row.active_from_hour), _at(day, row.active_to_hour)
 
 
 def _slots(
     day: date,
     count: int,
     rng: random.Random,
-    active_from: time = ACTIVE_FROM,
-    active_to: time = ACTIVE_TO,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> list[datetime]:
     """Rai `count` moc gio trong khung gio thuc cua mot ngay.
 
     Chia deu thanh cac o roi lech ngau nhien trong o, thay vi random tu do: random
     tu do hay tao ra cum ba bon lan lien tiep roi im lang ca buoi.
     """
-    start = datetime.combine(day, active_from, tzinfo=UTC)
-    end = datetime.combine(day, active_to, tzinfo=UTC)
+    start = start or _at(day, ACTIVE_FROM.hour)
+    end = end or _at(day, ACTIVE_TO.hour)
     span = (end - start).total_seconds()
     if count <= 0 or span <= 0:
         return []
@@ -120,10 +146,10 @@ async def plan_for_account(
     if await count_for_day(session, account.id, day):
         return []
 
-    active_from, active_to = await window_for(session, account.platform)
+    start, end = await window_for(session, account.platform, day)
 
     jobs = []
-    for when in _slots(day, count, rng, active_from, active_to):
+    for when in _slots(day, count, rng, start, end):
         kind = _pick_kind(rng)
         low, high = _DURATIONS[kind]
         job = ActivityJob(

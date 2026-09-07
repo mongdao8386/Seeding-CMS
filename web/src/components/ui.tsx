@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type Page } from "@/lib/api";
 
 export function PageHead({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -262,4 +262,120 @@ export function humanDuration(seconds: number | null): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return m ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
+}
+
+// ------------------------------------------------------------------ phan trang
+
+/**
+ * Tai mot trang du lieu, kem tim kiem va bo loc.
+ *
+ * Doi bo loc thi nhay ve trang dau. Khong lam vay thi loc con 3 ket qua trong khi
+ * dang o offset 100 se ra mot bang rong, va nguoi dung tuong la khong co gi khop.
+ */
+export function usePaged<T>(
+  path: string,
+  build: (params: { limit: number; offset: number; q: string }) => string,
+  pageSize = 50,
+) {
+  const [offset, setOffset] = useState(0);
+  const [q, setQ] = useState("");
+  // Go phim thi khong goi API ngay - 200ms sau lan go cuoi.
+  const [typed, setTyped] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQ(typed);
+      setOffset(0);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [typed]);
+
+  const url = build({ limit: pageSize, offset, q });
+  const loaded = useLoad<Page<T>>(() => api.get(url), [url]);
+
+  return {
+    ...loaded,
+    items: loaded.data?.items ?? [],
+    total: loaded.data?.total ?? 0,
+    offset,
+    pageSize,
+    query: typed,
+    setQuery: setTyped,
+    goto: setOffset,
+    // Bo loc rieng cua tung man hinh doi thi cung phai ve trang dau.
+    resetPage: () => setOffset(0),
+    path,
+  };
+}
+
+export function SearchBox({
+  value,
+  onChange,
+  placeholder = "search…",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="mono text-sm"
+      style={{ minWidth: 200 }}
+    />
+  );
+}
+
+/** Thanh dieu huong trang. Tu an khi tat ca vua trong mot trang. */
+export function Pager({
+  total,
+  offset,
+  pageSize,
+  onGoto,
+  noun = "row",
+}: {
+  total: number;
+  offset: number;
+  pageSize: number;
+  onGoto: (offset: number) => void;
+  noun?: string;
+}) {
+  if (total <= pageSize) {
+    return total > 0 ? (
+      <span className="faint text-xs tabular-nums">
+        {total} {noun}
+        {total === 1 ? "" : "s"}
+      </span>
+    ) : null;
+  }
+
+  const from = offset + 1;
+  const to = Math.min(offset + pageSize, total);
+  const atStart = offset === 0;
+  const atEnd = to >= total;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="faint text-xs tabular-nums">
+        {from}–{to} of {total} {noun}
+        {total === 1 ? "" : "s"}
+      </span>
+      <button
+        className="btn btn-ghost text-xs"
+        disabled={atStart}
+        onClick={() => onGoto(Math.max(0, offset - pageSize))}
+      >
+        ‹ prev
+      </button>
+      <button
+        className="btn btn-ghost text-xs"
+        disabled={atEnd}
+        onClick={() => onGoto(offset + pageSize)}
+      >
+        next ›
+      </button>
+    </div>
+  );
 }

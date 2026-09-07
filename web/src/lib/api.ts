@@ -68,10 +68,40 @@ export const api = {
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 
-  /** Upload multipart. Khong dat content-type de trinh duyet tu them boundary. */
-  upload: async <T>(path: string, file: File): Promise<T> => {
+  /** Gui multipart tu dung. Dung khi khong phai la mot file. */
+  postForm: async <T>(path: string, form: FormData): Promise<T> => {
+    const bearer = token.get();
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      body: form,
+      headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      } catch {
+        /* giữ statusText */
+      }
+      throw new ApiError(detail, res.status);
+    }
+    return (await res.json()) as T;
+  },
+
+  /**
+   * Upload multipart. Khong dat content-type de trinh duyet tu them boundary.
+   *
+   * `file` nhan ca File lan chuoi: dan thang vao o nhap nhanh hon han viec mo Excel,
+   * luu file, roi di tim xem vua luu vao dau.
+   */
+  upload: async <T>(path: string, file: File | string): Promise<T> => {
     const form = new FormData();
-    form.append("file", file);
+    if (typeof file === "string") {
+      form.append("text", file);
+    } else {
+      form.append("file", file);
+    }
     const bearer = token.get();
     const res = await fetch(`${BASE}${path}`, {
       method: "POST",
@@ -107,6 +137,31 @@ export const api = {
 
 // ---- Kieu du lieu, khop voi schemas.py ----
 
+/**
+ * Mot trang ket qua.
+ *
+ * `total` la so ban ghi KHOP DIEU KIEN LOC, khong phai so ban ghi trong trang. Thieu
+ * no thi giao dien khong ve duoc "51-100 cua 213", va nguoi dung khong bao gio biet
+ * minh dang nhin mot phan hay toan bo.
+ */
+export type Page<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+/** Ghep query string, bo qua cac gia tri rong. */
+export function qs(params: Record<string, string | number | boolean | null | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === "") continue;
+    search.set(key, String(value));
+  }
+  const text = search.toString();
+  return text ? `?${text}` : "";
+}
+
 export type Stats = {
   accounts: number;
   accounts_needing_human: number;
@@ -128,6 +183,10 @@ export type Account = {
   daily_cap: number;
   warmup_started_at: string | null;
   last_posted_at: string | null;
+  /** Dang bai duoc chua. false = thieu profile, proxy, hoac phien dang nhap. */
+  ready: boolean;
+  /** Thieu gi, neu chua san sang. */
+  blocked_reason: string | null;
 };
 
 export type Profile = {
@@ -155,6 +214,9 @@ export type Proxy = {
   sticky: boolean;
   status: string;
   last_exit_ip: string | null;
+  last_error: string | null;
+  /** Khong phai bi mat. Mat khau thi khong bao gio di nguoc ra khoi API. */
+  username: string | null;
 };
 
 export type ContentItem = {
@@ -279,8 +341,35 @@ export type ProxyTest = {
 export type PlatformWindow = {
   id: string;
   platform: string;
+  /** 0 = thu Hai ... 6 = Chu nhat, khop voi date.weekday() cua Python. */
+  weekday: number;
   active_from_hour: number;
+  /** 24 = nua dem ket thuc ngay. */
   active_to_hour: number;
+  note: string | null;
+};
+
+export type GraphAudit = {
+  accounts: number;
+  edges: number;
+  density: number;
+  mutual_pairs: number;
+  mutual_rate: number;
+  max_following: number;
+  isolated: number;
+  max_density: number;
+  safe: boolean;
+  warnings: string[];
+};
+
+export type GraphEdge = {
+  id: string;
+  follower: string;
+  target: string;
+  platform: string;
+  status: "planned" | "done" | "failed";
+  created_at: string;
+  done_at: string | null;
   note: string | null;
 };
 
@@ -295,12 +384,24 @@ export type ImportRow = {
   start_warmup: boolean;
   /** Chi SO luong. Bi mat khong bao gio di nguoc ra khoi API. */
   secret_count: number;
+  /** Chi CO hay KHONG. Chuoi cookie la mot phien dang nhap song. */
+  has_cookie: boolean;
+  /** Vi sao cookie khong dung duoc, neu co. */
+  cookie_note: string | null;
 };
 
 export type ImportReport = {
   ok: boolean;
   ready: number;
+  /** So dong co cookie DUNG DUOC - da thu doc va co ca cookie phien. */
+  with_cookies: number;
+  /** So dong co cookie nhung doc khong ra, hoac thieu cookie phien. */
+  cookie_problems: number;
+  /** So dong ma phan bi cat nham da duoc noi lai vao cot cuoi. */
+  rejoined_rows: number;
   unknown_columns: string[];
+  /** Cot cua nguoi ban da duoc doi sang ten cua he thong. */
+  renamed_columns: Record<string, string>;
   rows: ImportRow[];
   problems: ImportProblem[];
 };
@@ -310,6 +411,8 @@ export type ImportResult = {
   handles?: string[];
   skipped?: number;
   detail?: string;
+  profiles_with_session?: number;
+  warnings?: string[];
   problems: ImportProblem[];
 };
 
@@ -335,4 +438,48 @@ export type Survival = {
   by_proxy_label: Cohort[];
   by_warmup_length: Cohort[];
   by_posting_rate: Cohort[];
+};
+
+export type Device = {
+  id: string;
+  serial: string;
+  label: string;
+  os: "android" | "ios";
+  model: string | null;
+  os_version: string | null;
+  status: "offline" | "ready" | "busy" | "unauthorized" | "error";
+  last_seen_at: string | null;
+  last_error: string | null;
+  account_id: string | null;
+  handle: string | null;
+  proxy_label: string | null;
+  note: string | null;
+};
+
+export type DevicePreflight = {
+  ready: boolean;
+  problems: string[];
+  adb: string | null;
+  note: string;
+};
+
+export type WorkspaceDetail = {
+  id: string;
+  name: string;
+  personas: number;
+  accounts: number;
+  campaigns: number;
+  content: number;
+};
+
+export type ProxyImportResult = {
+  created: number;
+  labels: string[];
+  tested: number;
+  passed: number;
+  /** Hai proxy ra cung mot IP la MOT loi ra duoc dem thanh hai. */
+  duplicate_exit_ips: string[];
+  results: { label: string; ok: boolean; exit_ip: string | null; error: string | null }[];
+  skipped: { line: number; raw: string; detail: string }[];
+  problems: { line: number; raw: string; detail: string }[];
 };

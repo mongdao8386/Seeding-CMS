@@ -25,6 +25,7 @@ from seeding.adapters.base import PublishResult, register
 from seeding.browser import humanize
 from seeding.browser.checkpoints import detect
 from seeding.browser.session import open_profile
+from seeding.config import get_settings
 from seeding.models import Account, Platform, Profile, Variant
 
 log = structlog.get_logger(__name__)
@@ -49,6 +50,28 @@ class PostRecipe:
     media_input: tuple[str, ...] = ()
     # True voi nhung nen tang khong dang duoc bai chi co chu.
     media_required: bool = False
+
+    # Doan URL cho biet bai da len. DOC LAP NGON NGU, nen no la dau hieu dang tin nhat.
+    #
+    # `posted_signal` o tren la chuoi chu, va chu thi doi theo ngon ngu giao dien. Do
+    # that tren tai khoan that: profile chay qua proxy Viet Nam nen TikTok Studio ra
+    # `lang=vi-VN`, nut la "Dang" chu khong phai "Post", va KHONG mot chuoi tieng Anh
+    # nao trong posted_signal xuat hien. Hau qua khong phai la job that bai - la job
+    # bao that bai TRONG KHI bai da len, roi retry va dang lan hai.
+    posted_url_contains: tuple[str, ...] = ()
+
+    # Trang nang qua proxy dan cu thi 45 giay khong du. Do that: trang upload cua
+    # TikTok Studio mat 55 GIAY moi domcontentloaded.
+    goto_timeout_ms: int = 45_000
+
+    # Cho o caption hien ra sau khi dinh file - tuc la cho video upload xong. Do that:
+    # 40 giay voi mot video ngan. Truoc day cho 2-5 giay roi bo cuoc.
+    editor_timeout_ms: int = 15_000
+
+    # Nen tang tu dien san chu vao o caption (TikTok dien TEN FILE). Khong xoa thi
+    # caption thanh "Snaptik.app_7238655423920753925-97b98e7cTrua nay doi hoai..." -
+    # vua xau vua la dau vet ro rang la file tai ve tu cho khac.
+    editor_prefilled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,14 +195,44 @@ RECIPES: dict[Platform, PostRecipe] = {
         media_input=("input[type='file'][accept*='image']", "input[type='file']"),
         media_required=True,
     ),
+    # Cong thuc nay da duoc do tren trang that (tai khoan that, proxy Viet Nam that).
+    # Xem ghi chu tung dong - moi gia tri o day deu sua mot thu da quan sat duoc.
     Platform.TIKTOK: PostRecipe(
         compose_url="https://www.tiktok.com/tiktokstudio/upload",
         open_composer=(),
-        editor=("div[contenteditable='true']", "div[data-e2e='caption-input']"),
-        submit=("button:has-text('Post')", "button[data-e2e='post_video_button']"),
-        posted_signal=("text=Your video is being uploaded", "text=Manage your posts"),
-        media_input=("input[type='file'][accept*='video']", "input[type='file']"),
+        # O caption la Draft.js. Selector rieng dat truoc de khong bat nham mot
+        # contenteditable khac tren trang.
+        editor=(
+            "div.public-DraftEditor-content[contenteditable='true']",
+            "div[contenteditable='true']",
+        ),
+        # `data-e2e` truoc chu KHONG phai text: giao dien ra tieng Viet, nut ten la
+        # "Dang". Selector theo chu chi la luoi do phong khi TikTok bo data-e2e.
+        submit=(
+            "button[data-e2e='post_video_button']",
+            "button:has-text('Đăng')",
+            "button:has-text('Post')",
+        ),
+        posted_url_contains=("/tiktokstudio/content",),
+        posted_signal=(
+            "text=Video của bạn đang được tải lên",
+            "text=Your video is being uploaded",
+            "text=Quản lý bài đăng",
+            "text=Manage your posts",
+        ),
+        # `accept*='video'` KHONG ton tai tren trang do - o chon file khong khai accept.
+        # De no dung dau chi ton them 15 giay timeout roi van phai roi xuong cai sau.
+        media_input=("input[type='file']",),
         media_required=True,
+        # 300 giay khong phai la du phong - la con so do duoc. Trang upload cua TikTok
+        # keo 38 file JS/CSS tu CDN, va qua proxy dan cu moi file mat trung binh 101
+        # GIAY. Do that cung mot trang, cung mot proxy: 17s khong proxy, 90-250s qua
+        # proxy. He nay khong can nhanh - moi tai khoan dang 3 bai mot ngay, giai deu -
+        # nen cho 4 phut la chap nhan duoc, con bo cuoc o giay thu 120 thi khong bao
+        # gio dang duoc bai nao.
+        goto_timeout_ms=300_000,
+        editor_timeout_ms=180_000,
+        editor_prefilled=True,
     ),
 }
 
@@ -228,7 +281,8 @@ class BrowserAdapter:
 
         rng = random.Random()
         try:
-            async with open_profile(profile, headless=True, humanize=True) as (_b, context):
+            headless = get_settings().headless_jobs
+            async with open_profile(profile, headless=headless, humanize=True) as (_b, context):
                 page = await context.new_page()
                 if kind == "comment":
                     return await self._comment(page, variant, target["url"], rng)
@@ -251,7 +305,7 @@ class BrowserAdapter:
                 ),
             )
 
-        await page.goto(r.compose_url, wait_until="domcontentloaded", timeout=45_000)
+        await page.goto(r.compose_url, wait_until="domcontentloaded", timeout=r.goto_timeout_ms)
 
         if blocked := await detect(page, self.platform):
             return _from_checkpoint(blocked)
@@ -272,11 +326,16 @@ class BrowserAdapter:
             attached = await _attach_media(page, r.media_input, variant.media_variant_ref)
             if attached is not None:
                 return attached
-            await humanize.dwell(low=2.0, high=5.0, rng=rng)  # cho file len
 
-        editor = await _first_visible(page, r.editor)
+        # Cho o soan hien ra. Voi nen tang co media day la cho VIDEO UPLOAD XONG, va do
+        # that qua proxy dan cu la ~40 giay - khong phai vai giay nhu truoc kia cho.
+        editor = await _wait_visible(page, r.editor, r.editor_timeout_ms)
         if editor is None:
             return _selector_miss("the text editor", r.editor)
+
+        # Xoa chu co san truoc khi go, neu khong chu moi se noi duoi chu cu.
+        if r.editor_prefilled:
+            await _clear(editor)
 
         text = f"{variant.title}\n\n{variant.body}".strip() if variant.body else variant.title
         await humanize.type_like_person(editor, text, rng=rng)
@@ -369,12 +428,13 @@ class BrowserAdapter:
         if blocked := await detect(page, self.platform):
             return _from_checkpoint(blocked)
 
+        # Nhu _confirm: da gui roi thi khong duoc tu dong thu lai, se thanh hai binh luan.
         return PublishResult(
             ok=False,
-            retryable=True,
+            needs_human=True,
             error=(
-                "Submitted the comment but it never appeared on the page. It MAY have gone "
-                "through - check by hand before letting it retry."
+                "Submitted the comment but it never appeared on the page. It MAY already be "
+                "there - open the post and look before commenting again."
             ),
         )
 
@@ -384,7 +444,21 @@ class BrowserAdapter:
         Bao thanh cong nham nguy hiem hon bao that bai nham: job se khong duoc thu lai,
         va ban tuong bai da len trong khi no chua bao gio len.
         """
-        for signal in self.recipe.posted_signal:
+        r = self.recipe
+
+        # URL truoc chu. Chuyen trang la dau hieu khong phu thuoc ngon ngu giao dien,
+        # ma giao dien thi ra theo ngon ngu cua proxy chu khong phai tieng Anh.
+        if r.posted_url_contains:
+            try:
+                await page.wait_for_url(
+                    lambda url: any(frag in url for frag in r.posted_url_contains),
+                    timeout=90_000,
+                )
+                return PublishResult(ok=True, remote_url=page.url)
+            except Exception:
+                pass
+
+        for signal in r.posted_signal:
             try:
                 await page.wait_for_selector(signal, timeout=12_000)
                 return PublishResult(ok=True, remote_url=page.url)
@@ -394,13 +468,16 @@ class BrowserAdapter:
         if blocked := await detect(page, self.platform):
             return _from_checkpoint(blocked)
 
+        # Da BAM dang roi ma khong biet ket qua ra sao. Day KHONG duoc retry tu dong:
+        # neu bai da len that thi lan thu hai dang them mot bai nua len tai khoan that,
+        # va khong go lai duoc. Day sang hang doi cho nguoi mo ra nhin.
         return PublishResult(
             ok=False,
-            retryable=True,
+            needs_human=True,
             error=(
-                "Clicked post but saw none of the success markers in "
-                f"{list(self.recipe.posted_signal)}. The post MAY have gone through - "
-                "check by hand before letting it retry."
+                "Clicked post but could not confirm it went up (looked for "
+                f"{list(r.posted_url_contains) + list(r.posted_signal)}). The post MAY "
+                "already be live - open the account and look before posting again."
             ),
         )
 
@@ -426,16 +503,50 @@ async def _attach_media(page, selectors: tuple[str, ...], path: str) -> PublishR
     return _selector_miss("the file input", selectors)
 
 
-async def _first_visible(page, selectors: tuple[str, ...]):
+async def _first_visible(page, selectors: tuple[str, ...], timeout_ms: int = 4_000):
     """Selector dau tien thuc su hien tren trang. None neu khong cai nao khop."""
     for selector in selectors:
         try:
             locator = page.locator(selector).first
-            if await locator.is_visible(timeout=4_000):
+            if await locator.is_visible(timeout=timeout_ms):
                 return locator
         except Exception:
             continue
     return None
+
+
+async def _wait_visible(page, selectors: tuple[str, ...], timeout_ms: int):
+    """Cho den khi mot trong cac selector hien ra. None neu het gio.
+
+    Khac `_first_visible` o cho no QUAY VONG qua ca danh sach nhieu lan thay vi cho
+    that lau o cai dau tien. Quan trong khi cai dau la selector rieng cua nen tang va
+    cai sau la luoi do chung: cho 3 phut o cai rieng roi moi thu cai chung la hong,
+    con quay vong thi cai nao hien ra truoc lay cai do.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        # Chia deu cho cac selector, nhung moi lan thu khong duoi 1 giay va khong qua 3.
+        per = max(1.0, min(3.0, remaining / max(len(selectors), 1)))
+        found = await _first_visible(page, selectors, timeout_ms=int(per * 1000))
+        if found is not None:
+            return found
+
+
+async def _clear(locator) -> None:
+    """Xoa sach o soan. Chay duoc voi ca <textarea> lan contenteditable.
+
+    Khong dung `fill("")`: Draft.js - thu ma TikTok dung cho o caption - bo qua viec
+    dat value truc tiep. Chon het roi xoa la duong duy nhat di qua ban phim, va do
+    cung la duong ma nguoi that di.
+    """
+    await locator.click()
+    await locator.press("ControlOrMeta+a")
+    await locator.press("Delete")
 
 
 def _selector_miss(what: str, tried: tuple[str, ...]) -> PublishResult:

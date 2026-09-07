@@ -24,6 +24,7 @@ import sys
 from sqlalchemy import select
 
 from seeding.browser.session import PROBES, open_profile
+from seeding.core import cookies as cookies_mod
 from seeding.core import profiles as profiles_mod
 from seeding.core import vault
 from seeding.db import SessionLocal, engine
@@ -66,22 +67,62 @@ async def main(platform_name: str, handle: str) -> int:
             print(f"Ma 2FA hien tai: {vault.totp_now(secrets['totp_seed'])} (doi moi 30 giay)")
 
         print(f"\nDang mo trinh duyet cho {handle} ({platform.value})...")
+        closed_early = False
         async with open_profile(profile, headless=False, humanize=True) as (_browser, context):
             page = await context.new_page()
             await page.goto(login_url)
+            print(f"Da mo: {page.url}")
 
             print("\n" + "=" * 62)
             print("  Dang nhap trong cua so vua mo, ROI quay lai day an Enter.")
-            print("  Dung dong cua so trinh duyet - script se tu dong.")
+            print("  DUNG DONG cua so trinh duyet - phien chi lay duoc khi no con mo.")
             print("=" * 62)
             await asyncio.to_thread(input, "\nXong roi? An Enter de luu phien: ")
 
-            state = await context.storage_state()
+            # Lay phien trong khoi try: dong cua so truoc khi an Enter la loi hay gap
+            # nhat, va khi do storage_state() nem loi "Target closed" - mot cau khong
+            # noi gi ve viec phai lam lai the nao.
+            try:
+                state = await context.storage_state()
+            except Exception as exc:
+                closed_early = True
+                state = {"cookies": []}
+                print(f"\nKhong doc duoc phien: {type(exc).__name__}")
 
         if not state.get("cookies"):
-            print("Khong thay cookie nao. Phien chua duoc luu.")
+            print("\nKhong thay cookie nao. Phien CHUA duoc luu.")
+            print("\nHai ly do hay gap:")
+            if closed_early:
+                print("  * Cua so trinh duyet da dong truoc khi ban an Enter. Phien chi lay")
+                print("    duoc khi cua so con mo - de nguyen no, quay lai day, roi an Enter.")
+            else:
+                print("  * Trang chua tai duoc (proxy chet, hoac mang chan). Mot trang TikTok")
+                print("    tai xong luon dat it nhat vai cookie, ke ca khi chua dang nhap -")
+                print("    khong co cookie NAO nghia la trinh duyet chua den duoc trang do.")
+                print("  * Cua so da bi dong truoc khi an Enter.")
+            if profile.proxy is not None:
+                print(f"\n  Kiem tra proxy dang gan: {profile.proxy.label}")
+                print("  Vao man hinh Accounts > Proxies roi bam 'test' o dong do.")
             await profiles_mod.record_event(
                 session, profile, SessionEventKind.HEALTH_FAIL, "dang nhap tay: khong co cookie"
+            )
+            return 1
+
+        # Co cookie chua chac la da dang nhap: trang nao cung dat cookie thiet bi ngay
+        # tu lan tai dau tien. Luu mot phien chua dang nhap con te hon la khong luu -
+        # he thong se tuong tai khoan san sang va giao viec cho no.
+        names = {c["name"] for c in state["cookies"]}
+        expected = cookies_mod.SESSION_COOKIES.get(platform, ())
+        missing = [n for n in expected if n not in names]
+        if missing:
+            print(f"\nCo {len(names)} cookie, nhung THIEU cookie phien: {', '.join(missing)}")
+            print("Nghia la trinh duyet da vao duoc trang, nhung ban chua dang nhap xong.")
+            print("Phien CHUA duoc luu - dang nhap lai roi chay lai script nay.")
+            await profiles_mod.record_event(
+                session,
+                profile,
+                SessionEventKind.HEALTH_FAIL,
+                f"dang nhap tay: thieu cookie phien {missing}",
             )
             return 1
 

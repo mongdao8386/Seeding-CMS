@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, type CampaignSummary, type Group, type Job } from "@/lib/api";
+import { api, qs, type CampaignSummary, type Group, type Job } from "@/lib/api";
 import { NewCampaign } from "@/components/new-campaign";
 import { AddGroup } from "@/components/add-group";
 import {
@@ -10,17 +10,23 @@ import {
   ErrorBox,
   Loading,
   PageHead,
+  Pager,
+  SearchBox,
   Status,
   useLoad,
+  usePaged,
   when,
 } from "@/components/ui";
 
 const ALL = "__all__";
 
 export default function Schedule() {
-  const campaigns = useLoad<CampaignSummary[]>(() => api.get("/campaigns"));
+  const campaigns = usePaged<CampaignSummary>("/campaigns", ({ limit, offset, q }) =>
+    `/campaigns${qs({ limit, offset, q })}`,
+  );
   const [campaignId, setCampaignId] = useState("");
   const [groupId, setGroupId] = useState(ALL);
+  const [addingGroup, setAddingGroup] = useState(false);
 
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -35,8 +41,8 @@ export default function Schedule() {
   }, []);
 
   useEffect(() => {
-    if (!campaignId && campaigns.data?.length) setCampaignId(campaigns.data[0].id);
-  }, [campaigns.data, campaignId]);
+    if (!campaignId && campaigns.items.length) setCampaignId(campaigns.items[0].id);
+  }, [campaigns.items, campaignId]);
 
   useEffect(() => {
     if (!campaignId) return;
@@ -58,7 +64,7 @@ export default function Schedule() {
       .catch(setError);
   }, [campaignId, groupId, nonce]);
 
-  const campaign = campaigns.data?.find((c) => c.id === campaignId);
+  const campaign = campaigns.items.find((c) => c.id === campaignId);
   const reload = () => setNonce((n) => n + 1);
 
   async function spawnNext() {
@@ -116,11 +122,43 @@ export default function Schedule() {
         </div>
       )}
 
+      {addingGroup && campaignId && (
+        <AddGroup
+          campaignId={campaignId}
+          onDone={() => {
+            setAddingGroup(false);
+            reload();
+            campaigns.reload();
+          }}
+          onClose={() => setAddingGroup(false)}
+          onError={setError}
+        />
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
         {/* --- Cot 1: chien dich --- */}
-        <Pane title="Campaigns" count={campaigns.data?.length ?? 0}>
-          {campaigns.data?.length ? (
-            campaigns.data.map((c) => (
+        <Pane
+          title="Campaigns"
+          count={campaigns.total}
+          action={
+            <SearchBox
+              value={campaigns.query}
+              onChange={campaigns.setQuery}
+              placeholder="search…"
+            />
+          }
+          footer={
+            <Pager
+              total={campaigns.total}
+              offset={campaigns.offset}
+              pageSize={campaigns.pageSize}
+              onGoto={campaigns.goto}
+              noun="campaign"
+            />
+          }
+        >
+          {campaigns.items.length ? (
+            campaigns.items.map((c) => (
               <Row
                 key={c.id}
                 active={c.id === campaignId}
@@ -162,7 +200,9 @@ export default function Schedule() {
               />
             ))
           ) : (
-            <Empty>No campaigns yet.</Empty>
+            <Empty>
+              {campaigns.query ? "Nothing matches that search." : "No campaigns yet."}
+            </Empty>
           )}
         </Pane>
 
@@ -172,7 +212,12 @@ export default function Schedule() {
           count={groups?.length ?? 0}
           action={
             campaignId ? (
-              <AddGroup campaignId={campaignId} onDone={reload} onError={setError} />
+              <button
+                className="btn btn-ghost text-xs"
+                onClick={() => setAddingGroup((v) => !v)}
+              >
+                {addingGroup ? "close" : "add group"}
+              </button>
             ) : null
           }
         >
@@ -231,7 +276,13 @@ export default function Schedule() {
               ))}
             </>
           ) : (
-            !loading && <Empty>{campaign ? "No groups yet." : "Pick a campaign."}</Empty>
+            !loading && (
+              <Empty>
+                {campaign
+                  ? "This campaign has no group, so it has no posts. Press \u201cadd group\u201d above."
+                  : "Pick a campaign."}
+              </Empty>
+            )
           )}
         </Pane>
 
@@ -289,11 +340,14 @@ function Pane({
   title,
   count,
   action,
+  footer,
   children,
 }: {
   title: string;
   count: number;
   action?: React.ReactNode;
+  /** Thanh duoi cot - de phan trang, nam ngoai vung cuon de luon nhin thay. */
+  footer?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -307,6 +361,14 @@ function Pane({
         <div className="relative ml-auto">{action}</div>
       </div>
       <div style={{ maxHeight: "60vh", overflowY: "auto" }}>{children}</div>
+      {footer && (
+        <div
+          className="flex items-center justify-end border-t px-3 py-2"
+          style={{ borderColor: "var(--rule)" }}
+        >
+          {footer}
+        </div>
+      )}
     </div>
   );
 }

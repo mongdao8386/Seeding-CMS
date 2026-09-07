@@ -213,6 +213,10 @@ bật cơ chế đó, mức `moderate` đi từ 0–8 lên 2–16.
 ## Cấu trúc
 
 ```
+Start.cmd              bật tất cả bằng một lần bấm; dừng lại ngay khi một bước hỏng
+Stop.cmd               tắt tất cả, giữ nguyên dữ liệu
+scripts/launch.ps1     việc thật nằm ở đây
+
 src/seeding/
   models.py            Workspace → Persona → Account → Profile → Proxy
                        Content → Variant, Campaign → Group → PostJob → Attempt
@@ -232,11 +236,15 @@ src/seeding/
   core/recurring.py    chiến dịch lặp lại: nhân bản theo kỳ, bỏ kỳ đã lỡ
   core/survival.py     tài khoản sống được bao lâu, cắt theo proxy/warm-up/nhịp
   core/bulk.py         nhập tài khoản hàng loạt từ CSV, kiểm trước khi tạo
+  core/graph.py        tương tác chéo: luật mật độ, đối xứng, nhịp — không tắt được
+  core/devices.py      điện thoại thật: tìm qua adb, đối soát, preflight
+  core/cookies.py      đọc cookie của acc mua sẵn thành storage state Playwright
   core/alerts.py       báo ra ngoài khi hàng đợi tiếp quản có người mới
   browser/session.py   mở Camoufox đúng danh tính; kiểm tra phiên còn sống
   browser/humanize.py  gõ, cuộn, dừng đọc theo nhịp người
   browser/checkpoints.py  phân biệt checkpoint / lỗi tạm / bị khoá
   browser/activity.py  chạy một lần "sống" không đăng gì
+  browser/interact.py  theo dõi / thả cảm xúc / chia sẻ lại — chỉ báo xong khi thấy bằng chứng
   adapters/base.py     giao diện chung cho cả hai lane
   adapters/reddit.py   PRAW, chạy trong to_thread vì PRAW đồng bộ
   adapters/browser.py  đăng bài bằng Camoufox — RECIPES cần kiểm chứng
@@ -253,8 +261,12 @@ web/                   dashboard Next.js 15 (App Router, Tailwind 4) — giao di
   src/app/schedule/          ba cột Campaigns → Groups → Posts
   src/app/accounts/          tài khoản, profile, proxy — sửa/xoá tại chỗ, test proxy
   src/app/takeovers/         hàng đợi tiếp quản + mã 2FA
+  src/app/network/           đồ thị tương tác chéo, mật độ, cảnh báo
+  src/components/devices     tab thiết bị thật trong màn hình Accounts
+  src/components/workspace   workspace đang chọn, dùng chung cho cả dashboard
+  src/app/workspaces/        đổi tên, xoá, và xem mỗi workspace đang giữ gì
   src/app/analytics/         tỷ lệ sống sót theo proxy, warm-up, nhịp đăng
-  src/app/settings/          khung giờ thức riêng cho từng nền tảng
+  src/app/settings/          khung giờ thức theo từng nền tảng và từng ngày trong tuần
   src/components/token-gate  chắn dashboard cho tới khi có token dùng được
   src/lib/api.ts             một chỗ duy nhất gọi API
 ```
@@ -453,9 +465,20 @@ Trước đây dùng chung 7h–23h cho tất cả. Giờ cao điểm của TikT
 nhau, và một tài khoản hoạt động lệch hẳn với nhịp của nền tảng đó là một dấu vết — ít
 rõ hơn fingerprint, nhưng vẫn là dấu vết.
 
-Đặt trên màn hình **Hours**, hoặc `PUT /windows`. Nền tảng không có bản ghi riêng thì
-dùng mặc định trong `core/activity.py`. Khung vắt qua nửa đêm không được hỗ trợ: giờ
-thức trải qua 3h sáng chính là mẫu hình mà tính năng này sinh ra để tránh.
+Đặt **theo từng ngày trong tuần**, không phải một khung cho cả tuần: người thật không
+thức dậy và đi ngủ đúng một khung giờ bảy ngày liền, nên dùng chung một khung cũng là một
+mẫu hình — chỉ là kín đáo hơn giờ 3 giờ sáng.
+
+Màn hình **Hours** có nút *all week* / *Mon–Fri* / *Sat–Sun* để đặt nhanh, và từng ngày
+sửa riêng được. `PUT /windows` nhận `weekdays: [0..6]` (0 = thứ Hai, theo `date.weekday()`
+của Python). Ngày nào không có bản ghi thì dùng mặc định trong `core/activity.py`.
+
+Giờ kết thúc nhận **24 = nửa đêm**. Không có nó thì không diễn đạt được "hoạt động đến
+nửa đêm", mà đó là khung giờ bình thường nhất của buổi tối — `time(24, 0)` không tồn tại
+trong Python, nên `window_for()` trả về mốc thời gian chứ không trả về `time`.
+
+Khung vắt qua nửa đêm sang ngày hôm sau thì không được hỗ trợ: giờ thức trải qua 3h sáng
+chính là mẫu hình mà tính năng này sinh ra để tránh.
 
 Khung này chi phối **hoạt động nền** — cuộn feed, đọc bài, thả cảm xúc. Giờ đăng bài đến
 từ cửa sổ rải riêng của từng chiến dịch.
@@ -470,8 +493,21 @@ dòng hợp lệ lẫn dòng hỏng kèm số dòng; chỉ khi bạn nhìn thấ
 thì 172 dòng trước đó đã nằm trong database và bạn không biết phải sửa từ đâu.
 
 Cột bắt buộc `platform, handle`; tuỳ chọn `persona, daily_cap, start_warmup`; cột bí mật
-`client_id, client_secret, username, password, totp_seed, recovery_email` được mã hoá
-trước khi ghi xuống. Cột không đoán được thì **báo ra** chứ không lặng lẽ bỏ — gõ nhầm
+`client_id, client_secret, username, password, totp_seed, recovery_email,
+recovery_password` được mã hoá trước khi ghi xuống. Cột `cookie` đi vào cookie jar của
+Profile chứ không vào vault của Account.
+
+Định dạng của người bán acc — `username|password|hotmail|pass_hotmail|cookie` — nhập
+được **nguyên xi**: dấu phân cách được đoán từ dòng tiêu đề (`|` là mặc định trên thực
+tế, và bắt đổi sang dấu phẩy còn làm hỏng dữ liệu vì cookie có dấu phẩy bên trong), tên
+cột của người bán được dịch qua `ALIASES`, và `username` đóng cả vai `handle` khi không
+có cột `handle` nào. Nền tảng chọn một lần ở ngoài thay vì lặp lại 500 lần trong file.
+
+Dòng có cookie được tạo luôn Profile kèm phiên đăng nhập, bỏ qua `login_profile.py`.
+**Nhưng cookie hợp lệ về cú pháp không có nghĩa là nó còn sống**: nó được cấp cho một
+thiết bị tại một địa chỉ, và dùng lại từ nơi khác chính là thứ nền tảng dùng cookie để
+phát hiện. `core/cookies.py` kiểm phần kiểm được — thiếu cookie phiên thì báo ngay lúc
+nhập, thay vì để lộ ra lúc đăng bài hỏng. Cột không đoán được thì **báo ra** chứ không lặng lẽ bỏ — gõ nhầm
 `pasword` thì tài khoản được tạo mà không có mật khẩu, và bạn chỉ biết khi đăng nhập hỏng.
 
 Bí mật không bao giờ đi ngược ra khỏi API: bản kiểm chỉ trả về **số lượng** trường bí mật
@@ -514,6 +550,169 @@ Mỗi hàng mang `n` và `trustworthy`. Với 8 tài khoản một nhóm thì ch
 là nhiễu, không phải phát hiện — hàng dưới ngưỡng bị làm mờ ngay trên giao diện. Và đây
 không phải thí nghiệm có đối chứng: tài khoản dùng proxy rẻ cũng thường là tài khoản bị
 đẩy mạnh nhất, nên một khác biệt ở đây nói lên tương quan chứ không phải nguyên nhân.
+
+---
+
+## Phân trang
+
+Năm danh sách dài đều trả về một **phong bì** thay vì một mảng trần:
+
+```json
+{ "items": [...], "total": 213, "limit": 50, "offset": 0 }
+```
+
+`GET /accounts`, `/profiles`, `/proxies`, `/campaigns`, `/content`. Mặc định 50 dòng,
+trần cứng 500 — không phải để tiết kiệm băng thông, mà để một lần gõ nhầm `limit=100000`
+không kéo cả database vào bộ nhớ rồi làm chết API.
+
+`total` là số bản ghi **khớp điều kiện lọc**, không phải số dòng trong trang. Thiếu nó
+thì giao diện không vẽ được "51–100 của 213", và người dùng không bao giờ biết mình đang
+nhìn một phần hay toàn bộ. Đó là kiểu cắt bớt âm thầm mà việc này sinh ra để xoá bỏ:
+trước đây `/campaigns` cắt cứng ở 100 và `/content` ở 200, **không nói gì cả** — một
+chuỗi lặp hằng ngày vượt mốc 100 trong ba tháng, rồi các chiến dịch cũ lặng lẽ biến mất
+khỏi màn hình.
+
+Lọc ngay trong truy vấn, không lọc ở giao diện: `q` (tìm theo handle / nhãn / tiêu đề),
+`platform`, `status`, `approved`, `alive`, `logged_in`. Tải hết về rồi lọc bằng
+JavaScript nghĩa là kéo 200 bản ghi qua mạng để hiện ra 8 cái.
+
+**Hàng đợi việc phải làm thì không phân trang** — một hàng đợi chỉ hiện trang đầu thì
+không còn là hàng đợi, và những tài khoản ở trang hai sẽ không bao giờ được xử lý:
+
+- `GET /accounts/without-profile` — tài khoản chưa có profile nên chưa đăng được gì.
+  Tự loại Reddit (đi bằng API, không cần profile) và tài khoản đã chết.
+- `GET /profiles?logged_in=false` — profile chưa từng đăng nhập tay.
+
+Ô chọn tài khoản khi tạo chiến dịch cũng lọc ở server theo nền tảng và từ khoá, và **nói
+rõ khi còn nữa** ("Showing 200 of 431") thay vi im lặng cắt mất phần dưới.
+
+---
+
+## Tương tác chéo giữa các tài khoản
+
+Tính năng có ích nhất và nguy hiểm nhất trong hệ thống.
+
+Có ích: một bài không có tương tác nào thì không lan được. Vài lượt thích đầu tiên là thứ
+quyết định nền tảng có đẩy bài đi xa hay không.
+
+Nguy hiểm: nó tạo ra một **đồ thị**. Và đồ thị hành vi mới là cách nền tảng bắt trại tài
+khoản — dễ hơn nhiều so với fingerprint. Fingerprint hỏng thì mất một tài khoản; đồ thị
+hỏng thì **mất cả cụm trong một lần quét**, vì một tài khoản bị gắn cờ dẫn ra tất cả
+những tài khoản liên quan.
+
+Bốn hình dạng lộ ra ngay lập tức, và `core/graph.py` không cho phép tạo ra chúng:
+
+| Hình dạng | Luật chặn |
+|---|---|
+| Đồ thị dày — ai cũng theo dõi tất cả | `MAX_DENSITY = 0.15` (cộng đồng người thật: 0.01–0.10) |
+| Đối xứng hoàn toàn | chỉ ~25% lượt theo dõi được đáp lại |
+| Một tài khoản thành trung tâm | `MAX_INTERNAL_FOLLOWING = 12`, và ưu tiên acc đang theo dõi ít nhất |
+| Đồng bộ — bài vừa lên đã có 12 lượt thích | tương tác bắt đầu sau ≥18 phút, rải trong nhiều giờ, và chỉ **một phần** người theo dõi |
+
+Các luật nằm **trong hàm**, không phải tuỳ chọn. Một tuỳ chọn "cho phép đồ thị dày" chỉ
+tồn tại để có người bật nó vào lúc ba giờ sáng.
+
+**Mật độ chỉ được áp từ 10 tài khoản trở lên** (`MIN_ACCOUNTS_FOR_DENSITY`). Mật độ là
+một tỷ lệ, và tỷ lệ thì vô nghĩa ở N nhỏ: với ba tài khoản, một cạnh duy nhất đã là 17% —
+trên trần — trong khi một người theo dõi một người khác trong nhóm ba người là chuyện
+không ai để ý. Dưới ngưỡng, luật là số tuyệt đối: trung bình một cạnh mỗi tài khoản.
+
+Đồ thị **lớn lên từng ít một**: tối đa 8 cạnh mới mỗi ngày trên toàn hệ thống. Năm mươi
+lượt theo dõi xuất hiện trong một buổi sáng là một sự kiện, không phải một mạng xã hội.
+
+Reddit bị loại khỏi đồ thị: nó đi bằng API, không có profile trình duyệt và không có công
+thức theo dõi. Lập cạnh cho nó là tạo ra việc không bao giờ làm được.
+
+Một cạnh chỉ tính là **có thật** khi trình duyệt bấm được và **thấy nút đổi thành
+Following**. Coi cạnh đã lập kế hoạch là đã xong thì mọi phép tính mật độ sau đó đều sai.
+
+> **Thứ hệ thống không đo được, và nó nói thẳng ra trong `audit()`:** nó chỉ thấy cạnh
+> giữa các tài khoản *của bạn*. Nó không biết mỗi tài khoản theo dõi bao nhiêu người thật
+> bên ngoài — mà **tỷ lệ nội/ngoại mới là con số quan trọng nhất**. Một tài khoản theo dõi
+> 8 tài khoản nội bộ và 300 người thật thì hoàn toàn bình thường; cùng 8 cạnh đó mà không
+> theo dõi ai khác thì là một cái bẫy. Hai trường hợp giống hệt nhau trong database.
+
+Xem trên màn hình **Network**, hoặc `GET /graph`.
+
+---
+
+## Điện thoại thật
+
+Đường này **song song** với browser profile chứ không thay thế. Profile là một danh tính
+*trình duyệt* (fingerprint + cookie jar); Device là một danh tính *thiết bị* (máy thật,
+app thật).
+
+Lý do tồn tại: app thật gửi lên những tín hiệu trình duyệt không có cách nào giả — cảm
+biến, độ nghiêng, ID thiết bị, nhịp chạm màn hình. Giả lập mobile bằng cách đổi
+user-agent trên trình duyệt desktop **không** cho bạn những tín hiệu đó. Nó cho bạn một
+chuỗi chữ, kèm một fingerprint **tự mâu thuẫn** — UA khai là điện thoại trong khi WebGL
+báo card đồ hoạ máy bàn. Cái đó dễ bị bắt hơn một profile desktop trung thực, không phải
+khó hơn.
+
+Bất biến giữ nguyên: **một acc ↔ một thiết bị ↔ một proxy, không xoay.** Chạy cùng một
+acc lúc trên web lúc trên app từ hai IP khác nhau là dấu vết rõ hơn mọi thứ hệ thống này
+đang tránh.
+
+### iOS: không chạy được trên Windows
+
+Không phải chuyện bỏ thêm công sức — đây là bức tường nền tảng:
+
+- Tự động hoá app iOS bắt buộc phải build và **ký WebDriverAgent bằng Xcode**, mà Xcode
+  chỉ chạy trên macOS.
+- iOS Simulator **không cài được app từ App Store**, nên kể cả có macOS thì Simulator
+  cũng không chạy được TikTok hay Facebook.
+
+`DeviceOS.IOS` tồn tại trong mô hình dữ liệu vì nó chịu được, không phải vì chạy được.
+Muốn iOS thật thì cần một máy Mac và iPhone thật.
+
+### Cần gì cho Android
+
+`GET /devices/preflight` liệt kê **tất cả** những thứ còn thiếu trong một lần, thay vì
+báo thứ đầu tiên rồi dừng — với chuỗi công cụ Android, cài một thứ rồi chạy lại để gặp
+thứ tiếp theo là cả buổi chiều.
+
+1. **Android Platform Tools** (`adb`) trong PATH
+2. **Appium Python client** — `pip install Appium-Python-Client`
+3. Bật **USB debugging** trên máy, và bấm *cho phép* khi nó hỏi
+
+*Scan for phones* (`POST /devices/sync`) đối soát máy đang cắm với database. Nó **không
+tự thêm máy mới**: một cái điện thoại cắm vào để sạc cũng hiện ra trong `adb devices`.
+Máy lạ được trả về trong `unknown` để bạn tự quyết.
+
+Máy rút dây ra thì chuyển sang `offline` ngay. Để nguyên `ready` nghĩa là worker giao
+việc cho một máy không còn ở đó, rồi job thất bại vì một lý do không liên quan gì đến lý
+do thật.
+
+**Chưa có:** phần điều khiển app (mở TikTok, gõ, bấm đăng) nằm ở `adapters/android.py`
+và cần Appium chạy thật. Máy này chưa có adb lẫn Appium, nên **chưa dòng nào chạm vào
+thiết bị thật** — y như `RECIPES` của trình duyệt.
+
+---
+
+## Workspace
+
+Workspace giữ persona, persona giữ tài khoản. Chiến dịch, nội dung và túi hashtag cũng
+thuộc về một workspace. **Proxy và thiết bị thì dùng chung** cho tất cả — chúng là hạ
+tầng, không phải nội dung.
+
+Có một **bộ chọn workspace trên thanh điều hướng**, và nó là thứ quyết định màn hình
+Accounts hiển thị gì. Lựa chọn được nhớ trong `localStorage` nên không mất khi chuyển
+trang.
+
+Trước đây khái niệm này bị lộ ra một nửa và đó là một lỗi thật: ô *Workspace* trong form
+tạo tài khoản **không điều khiển gì cả**. Nó nạp `/personas` — toàn bộ persona của mọi
+workspace — nên chọn workspace nào thì danh sách persona vẫn y hệt, và chọn một persona
+có sẵn sẽ lặng lẽ đặt tài khoản vào workspace **của persona đó** chứ không phải cái vừa
+chọn. Giờ `/personas?workspace_id=` lọc thật, và danh sách nạp lại mỗi khi đổi workspace.
+
+Màn hình **Workspaces** đổi tên và xoá được, kèm số persona / tài khoản / chiến dịch /
+nội dung mỗi cái đang giữ. Xoá một workspace còn tài khoản bị **từ chối** trừ khi
+`force=true`, và thông báo nói rõ cái mất là gì: xoá nó kéo theo persona, tài khoản,
+profile, và **cookie jar bên trong** — thứ không khôi phục được, chỉ đăng nhập tay lại
+từng cái một.
+
+> Bộ test cũ để lại một workspace "Library test" sau **mỗi lần chạy**. Fixture giờ tự dọn
+> (`yield` rồi `DELETE ?force=true`), và 6 cái tồn đọng đã được xoá.
 
 ---
 

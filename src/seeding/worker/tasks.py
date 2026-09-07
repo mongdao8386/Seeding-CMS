@@ -7,6 +7,7 @@ run_activity_job() mot lan "song" tren nen tang ma khong dang gi
 health_sweep()     kiem tra cac phien da qua han
 plan_activity()    lap lich hoat dong nen cho ngay moi
 repeat_tick()      sinh ky ke tiep cua cac chien dich lap lai
+graph_tick()       moc them mot it canh trong do thi tuong tac cheo
 """
 
 from __future__ import annotations
@@ -22,11 +23,20 @@ from seeding.adapters import browser as _browser  # noqa: F401 - import de dang 
 from seeding.adapters import reddit as _reddit  # noqa: F401 - import de dang ky adapter
 from seeding.config import get_settings
 from seeding.core import activity as activity_mod
+from seeding.core import graph, ratelimit, readiness, recurring, takeover
 from seeding.core import profiles as profiles_mod
-from seeding.core import ratelimit, recurring, takeover
 from seeding.core.planner import due_jobs
 from seeding.db import SessionLocal
-from seeding.models import Account, ActivityJob, Attempt, JobStatus, PostJob, Variant
+from seeding.models import (
+    TARGETED_KINDS,
+    Account,
+    ActivityJob,
+    ActivityKind,
+    Attempt,
+    JobStatus,
+    PostJob,
+    Variant,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -120,6 +130,28 @@ async def repeat_tick(ctx: dict) -> int:
     return created
 
 
+async def graph_tick(ctx: dict) -> int:
+    """Moc them mot it canh trong do thi tuong tac cheo. Chay mot lan moi ngay.
+
+    Do thi phai LON LEN theo thoi gian. Nam muoi canh xuat hien trong mot buoi sang la
+    mot su kien, khong phai mot mang xa hoi - nen so canh moi bi chan cung trong
+    core/graph.py chu khong phai o day.
+    """
+    async with SessionLocal() as session:
+        edges = await graph.plan_follows(session)
+        jobs = await graph.due_follow_jobs(session)
+
+        # Do lai sau khi them. Do thi vuot tran la thu phai hien ra trong nhat ky ngay,
+        # chu khong phai doi den luc nguoi van hanh tinh co mo man hinh len xem.
+        report = await graph.audit(session)
+        for warning in report.warnings:
+            log.warning("graph.warning", detail=warning)
+
+    if edges or jobs:
+        log.info("graph_tick.done", edges=len(edges), jobs=len(jobs))
+    return len(jobs)
+
+
 async def prune_media(ctx: dict) -> int:
     """Don ban bien the cu. Chay mot lan moi ngay.
 
@@ -210,6 +242,17 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
 
         adapter = adapters.get(job.account.platform)
         profile = await profiles_mod.get_for_account(session, job.account_id)
+
+        # Cung lop chan nhu ben hoat dong nen. Quan trong hon o day: mot bai dang tu
+        # IP nha nguoi dung khong rut lai duoc, khac han mot job hoat dong nen that bai.
+        verdict = readiness.check(job.account, profile)
+        if not verdict.ready:
+            job.status = JobStatus.SKIPPED
+            job.last_error = verdict.reason
+            await session.commit()
+            log.warning("job.not_ready", handle=job.account.handle, reason=verdict.reason)
+            return job.status.value
+
         result = await adapter.publish(job.account, job.variant, job.target, profile=profile)
 
         attempt.finished_at = datetime.now(UTC)
@@ -236,6 +279,17 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
                 session, job.account, result.error or "checkpoint", post_job_id=job.id
             )
 
+        # Bai da len thi lap lich tuong tac cheo. Chi mot phan nguoi theo doi, va cham -
+        # luat nam trong core/graph.py, khong phai o day.
+        if job.status == JobStatus.SUCCEEDED and result.remote_url:
+            try:
+                await graph.engage_with(session, job)
+            except Exception as exc:
+                # Tuong tac hong khong duoc lam hong ket qua dang bai. Bai da len that
+                # roi; danh dau job that bai o day se khien no bi dang lai lan nua.
+                await session.rollback()
+                log.warning("graph.engage_failed", job=job_id, error=f"{type(exc).__name__}: {exc}")
+
         log.info(
             "job.finished",
             job=job_id,
@@ -259,15 +313,51 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
         job.attempt_count += 1
         profile = await profiles_mod.get_for_account(session, job.account_id)
 
-        if profile is None:
+        # Chan o day chu khong chi o giao dien. Giao dien chi la loi nhac; day la lop
+        # that su ngan job chay.
+        #
+        # Truong hop nguy hiem nhat la profile CO nhung khong co proxy: trinh duyet van
+        # mo, van vao duoc trang, chi la di ra bang dia chi nha nguoi dung - va moi tai
+        # khoan chay nhu vay deu hien ra tren cung mot IP.
+        verdict = readiness.check(job.account, profile)
+        if not verdict.ready:
             job.status = JobStatus.SKIPPED
-            job.last_error = "no profile"
+            job.last_error = verdict.reason
             await session.commit()
+            log.warning(
+                "activity.not_ready",
+                handle=job.account.handle,
+                reason=verdict.reason,
+            )
             return job.status.value
 
-        result = await activity_runner.run(
-            profile, job.account.platform, job.kind, job.duration_seconds
-        )
+        if job.kind in TARGETED_KINDS:
+            from seeding.browser import interact
+
+            target_handle = None
+            if job.target_account_id is not None:
+                target = await session.get(Account, job.target_account_id)
+                target_handle = target.handle if target else None
+
+            result = await interact.run(
+                profile,
+                job.account.platform,
+                job.kind,
+                target_url=job.target_url,
+                target_handle=target_handle,
+                budget_seconds=job.duration_seconds,
+            )
+
+            # Canh chi tinh la co that khi trinh duyet lam duoc that. Coi canh da lap
+            # ke hoach la da xong thi moi phep tinh mat do sau do deu sai.
+            if job.kind is ActivityKind.FOLLOW and job.target_account_id is not None:
+                await graph.mark_edge(
+                    session, job.account_id, job.target_account_id, result.ok, result.detail
+                )
+        else:
+            result = await activity_runner.run(
+                profile, job.account.platform, job.kind, job.duration_seconds
+            )
 
         job.detail = result.detail
         if result.ok:

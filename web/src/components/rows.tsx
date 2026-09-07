@@ -154,6 +154,7 @@ export function ProxyRow({
     port: proxy.port,
     scheme: proxy.scheme,
     region: proxy.region ?? "",
+    username: proxy.username ?? "",
     password: "",
   });
   const [testing, setTesting] = useState(false);
@@ -211,7 +212,15 @@ export function ProxyRow({
                 style={{ width: 100 }}
               />
             </Field>
-            <Field label="New password">
+            <Field label="Username">
+              <input
+                value={form.username}
+                onChange={(e) => set("username", e.target.value)}
+                className="mono text-sm"
+                style={{ width: 150 }}
+              />
+            </Field>
+            <Field label="New password (blank keeps it)">
               <input
                 type="password"
                 value={form.password}
@@ -227,6 +236,7 @@ export function ProxyRow({
                 try {
                   await api.patch(`/proxies/${proxy.id}`, {
                     label: form.label,
+                    username: form.username,
                     host: form.host,
                     port: form.port,
                     scheme: form.scheme,
@@ -269,19 +279,27 @@ export function ProxyRow({
       <td>
         <Status value={proxy.status} />
       </td>
-      <td className="mono text-xs">
+      <td className="mono text-xs" style={{ maxWidth: 340 }}>
         {result ? (
           result.ok ? (
             <span style={{ color: "var(--ok)" }}>
               {result.exit_ip} · {result.latency_ms}ms
             </span>
           ) : (
-            <span style={{ color: "var(--bad)" }} title={result.error ?? ""}>
-              failed
+            // Chu "failed" trong mot tooltip la vo dung: no giau di dung cai cau noi
+            // phai lam gi. Hien thang ra, xuong dong duoc.
+            <span style={{ color: "var(--bad)", whiteSpace: "normal", display: "block" }}>
+              {result.error ?? "failed"}
             </span>
           )
+        ) : proxy.last_exit_ip ? (
+          proxy.last_exit_ip
+        ) : proxy.last_error ? (
+          <span style={{ color: "var(--bad)", whiteSpace: "normal", display: "block" }}>
+            {proxy.last_error}
+          </span>
         ) : (
-          (proxy.last_exit_ip ?? "—")
+          "—"
         )}
       </td>
       <td>

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, type Account, type ContentItem, type Named } from "@/lib/api";
-import { ErrorBox, Field } from "@/components/ui";
+import { api, qs, type Account, type ContentItem, type Named, type Page } from "@/lib/api";
+import { ErrorBox, Field, SearchBox } from "@/components/ui";
+import { useWorkspace } from "@/components/workspace";
 
 const PLATFORMS = ["reddit", "threads", "x", "youtube", "instagram", "facebook", "tiktok"];
 
 export function NewCampaign({ onDone }: { onDone: (campaignId: string) => void }) {
+  const workspace = useWorkspace();
   const [open, setOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Named[]>([]);
   const [contents, setContents] = useState<ContentItem[]>([]);
@@ -23,6 +25,8 @@ export function NewCampaign({ onDone }: { onDone: (campaignId: string) => void }
   const [repeatUntil, setRepeatUntil] = useState("");
   const [spreadMinutes, setSpreadMinutes] = useState(60);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [matching, setMatching] = useState(0);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -31,20 +35,39 @@ export function NewCampaign({ onDone }: { onDone: (campaignId: string) => void }
     if (!open) return;
     api.get<Named[]>("/workspaces").then((w) => {
       setWorkspaces(w);
-      if (w.length && !workspaceId) setWorkspaceId(w[0].id);
+      if (w.length && !workspaceId) setWorkspaceId(workspace.id || w[0].id);
     });
-    api.get<ContentItem[]>("/content").then(setContents);
-    api.get<Account[]>("/accounts").then(setAccounts);
+    api.get<Page<ContentItem>>("/content?approved=true&limit=200").then((p) => setContents(p.items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Chi hien tai khoan dung nen tang - tron nen tang trong mot nhom la vo nghia.
-  const candidates = useMemo(
-    () => accounts.filter((a) => a.platform === platform && a.status !== "dead"),
-    [accounts, platform],
-  );
+  // Loc o SERVER theo nen tang va tu khoa. Tai het ve roi loc bang JavaScript nghia la
+  // keo 200 tai khoan qua mang de hien ra 8 cai - va vuot 500 thi im lang mat phan duoi.
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      api
+        .get<Page<Account>>(`/accounts${qs({ platform, q: search, limit: 200 })}`)
+        .then((p) => {
+          setAccounts(p.items);
+          setMatching(p.total);
+        })
+        .catch(setError);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [open, platform, search]);
 
-  const approved = contents.filter((c) => c.approved);
+  // Acc chet khong dang duoc nua; loc o day thay vi o server de con dem duoc tong so.
+  const candidates = useMemo(() => accounts.filter((a) => a.status !== "dead"), [accounts]);
+
+  // Chua san sang thi KHONG cho chon. Truoc day o chon hien het, va truong hop te nhat
+  // khong phai la job that bai: profile co ma khong co proxy thi trinh duyet van mo,
+  // van dang duoc, chi la di ra bang dia chi nha ban - va moi acc nhu vay deu hien ra
+  // tren cung mot IP.
+  const usable = useMemo(() => candidates.filter((a) => a.ready), [candidates]);
+  const blocked = useMemo(() => candidates.filter((a) => !a.ready), [candidates]);
+
+  const approved = contents;
   const count = picked.size;
 
   // Cua so qua hep so voi so tai khoan la mau hinh de phat hien nhat.
@@ -226,23 +249,28 @@ export function NewCampaign({ onDone }: { onDone: (campaignId: string) => void }
       </div>
 
       <div className="mt-4">
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="label">
-            {platform} accounts — {count} of {candidates.length} selected
+            {platform} accounts — {count} of {usable.length} ready selected
           </span>
+          <SearchBox value={search} onChange={setSearch} placeholder="search handle…" />
           <button
             className="btn btn-ghost text-xs"
             onClick={() =>
               setPicked(
-                picked.size === candidates.length
-                  ? new Set()
-                  : new Set(candidates.map((a) => a.id)),
+                picked.size === usable.length ? new Set() : new Set(usable.map((a) => a.id)),
               )
             }
           >
-            {picked.size === candidates.length ? "clear" : "select all"}
+            {picked.size === usable.length && usable.length > 0 ? "clear" : "select all ready"}
           </button>
         </div>
+
+        {matching > candidates.length && (
+          <p className="faint mb-2 text-xs">
+            Showing {candidates.length} of {matching} — narrow with the search box to reach the rest.
+          </p>
+        )}
 
         {candidates.length === 0 ? (
           <p className="faint py-3 text-sm">
@@ -250,7 +278,7 @@ export function NewCampaign({ onDone }: { onDone: (campaignId: string) => void }
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {candidates.map((a) => {
+            {usable.map((a) => {
               const on = picked.has(a.id);
               return (
                 <button
@@ -275,6 +303,24 @@ export function NewCampaign({ onDone }: { onDone: (campaignId: string) => void }
           </div>
         )}
       </div>
+
+      {blocked.length > 0 && (
+        <div className="card mt-3 p-3 text-sm" style={{ borderLeft: "3px solid var(--warn)" }}>
+          <span className="label" style={{ color: "var(--warn)" }}>
+            {blocked.length} {platform} account{blocked.length === 1 ? "" : "s"} cannot post yet
+          </span>
+          <ul className="muted mt-1 flex flex-col gap-0.5">
+            {blocked.slice(0, 8).map((a) => (
+              <li key={a.id}>
+                <span className="mono">{a.handle}</span> — {a.blocked_reason}
+              </li>
+            ))}
+          </ul>
+          {blocked.length > 8 && (
+            <p className="faint mt-1 text-xs">…and {blocked.length - 8} more.</p>
+          )}
+        </div>
+      )}
 
       {postKind === "comment" && count > 1 && (
         <div className="card mt-3 p-3 text-sm" style={{ borderLeft: "3px solid var(--warn)" }}>

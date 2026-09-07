@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { api, type Named } from "@/lib/api";
 import { ErrorBox, Field } from "@/components/ui";
+import { useWorkspace } from "@/components/workspace";
 
 const PLATFORMS = ["reddit", "threads", "x", "youtube", "instagram", "facebook", "tiktok"];
 
 export function NewAccount({ onDone }: { onDone: () => void }) {
+  const workspace = useWorkspace();
   const [open, setOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Named[]>([]);
   const [personas, setPersonas] = useState<Named[]>([]);
@@ -26,6 +28,23 @@ export function NewAccount({ onDone }: { onDone: () => void }) {
   const [totpSeed, setTotpSeed] = useState("");
 
   const [busy, setBusy] = useState(false);
+
+  // Persona phai theo workspace dang chon. Nap tat ca roi de nguyen nghia la o chon
+  // workspace khong dieu khien gi: chon workspace nao thi danh sach persona van y het,
+  // va chon mot persona co san se lang le dat tai khoan vao workspace CUA PERSONA do.
+  useEffect(() => {
+    if (!workspaceId) {
+      setPersonas([]);
+      return;
+    }
+    api
+      .get<Named[]>(`/personas?workspace_id=${workspaceId}`)
+      .then((rows) => {
+        setPersonas(rows);
+        setPersonaId((current) => (rows.some((x) => x.id === current) ? current : ""));
+      })
+      .catch(() => setPersonas([]));
+  }, [workspaceId]);
   const [error, setError] = useState<unknown>(null);
   const isReddit = platform === "reddit";
 
@@ -33,9 +52,9 @@ export function NewAccount({ onDone }: { onDone: () => void }) {
     if (!open) return;
     api.get<Named[]>("/workspaces").then((w) => {
       setWorkspaces(w);
-      if (w.length && !workspaceId) setWorkspaceId(w[0].id);
+      // Mac dinh theo workspace dang chon tren thanh dieu huong, khong phai cai dau tien.
+      if (w.length && !workspaceId) setWorkspaceId(workspace.id || w[0].id);
     });
-    api.get<Named[]>("/personas").then(setPersonas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

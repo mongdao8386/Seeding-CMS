@@ -20,10 +20,27 @@ dependencies = [
     "python-multipart>=0.0.20",
     "httpx>=0.28",
     "structlog>=24.4",
+
+    # Kho mat: cookie jar va ma 2FA.
+    "cryptography>=44",
+    "pyotp>=2.9",
+
+    # Trinh duyet chong nhan dien. `[geoip]` KHONG phai tuy chon:
+    # browser/session.py bat geoip=True cho moi profile co proxy, de Camoufox suy
+    # timezone va ngon ngu tu IP THAT cua proxy. Thieu extra do thi moi profile co
+    # proxy - tuc la moi profile that - nem NotInstalledGeoIPExtra ngay khi mo.
+    # Va neu tat geoip di cho xong chuyen thi con te hon: mot proxy dan cu Viet Nam
+    # chay voi timezone My la fingerprint tu mau thuan, dung thu ma ca he thong nay
+    # ton tai de tranh.
+    "camoufox[geoip]>=0.5",
+    "playwright>=1.49",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.8"]
+# Duong thiet bi that. Tach rieng vi no con can adb va Appium server ben ngoai,
+# khong cai bang pip duoc - xem GET /devices/preflight.
+device = ["Appium-Python-Client>=4"]
 
 [build-system]
 requires = ["hatchling"]

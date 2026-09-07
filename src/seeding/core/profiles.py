@@ -43,7 +43,7 @@ async def create_profile(
     proxy: Proxy | None = None,
     engine: BrowserEngine = BrowserEngine.CAMOUFOX,
     os_family: str = "windows",
-    locale: str = "en-US",
+    locale: str = "auto",
 ) -> Profile:
     existing = await get_for_account(session, account.id)
     if existing is not None:
