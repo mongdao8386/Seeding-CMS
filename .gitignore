@@ -11,3 +11,4 @@ build/
 .pgdata/
 
 media/
+backups/
