@@ -116,6 +116,9 @@ class Settings(BaseSettings):
     # Nuoi: tu khoa tim kiem de chon dich (cach nhau bang dau phay), cong them chu de
     # (interests) cua persona. Trong = chi lay tu For You.
     warm_keywords: str = ""
+    # So ngay dau cua warm-up chi LUOT XEM, khong tha tim / follow gi (TikTok: thoi gian xem
+    # moi la thu thuat toan de y toi tai khoan moi).
+    warm_watch_only_days: int = 1
 
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic

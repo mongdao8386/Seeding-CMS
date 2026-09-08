@@ -25,6 +25,7 @@ from seeding.domain.models import (
     SessionEventKind,
 )
 from seeding.platforms import manage
+from seeding.platforms.tiktok import sitting
 from seeding.scheduling import slots as slots_mod
 
 router = APIRouter(tags=["activity"])
@@ -145,7 +146,7 @@ async def timeline(
 
 
 def _timeline_url(a: ActivityJob) -> str | None:
-    if a.kind is ActivityKind.IDENTITY:
+    if a.kind in (ActivityKind.IDENTITY, ActivityKind.BROWSE_FEED):
         return None
     if a.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
         plan = manage.decode(a.target_url)
@@ -160,6 +161,8 @@ def _target_label(a: ActivityJob) -> str:
         return "Đổi danh tính: " + identity.describe(identity.plan_from_target(a.target_url))
     if a.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
         return manage.describe(manage.decode(a.target_url))
+    if a.kind is ActivityKind.BROWSE_FEED:
+        return sitting.describe(sitting.decode(a.target_url))
     if a.kind is ActivityKind.REPLY:
         return "Trả lời bình luận"
     if a.kind is ActivityKind.DM:

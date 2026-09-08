@@ -175,7 +175,7 @@ const KIND_VI: Record<TimelineItem["kind"], string> = {
   follow: "Follow",
   comment: "Bình luận",
   repost: "Đăng lại",
-  browse: "Xem feed",
+  browse: "Lướt xem",
   session: "Phiên",
   identity: "Danh tính",
   delete: "Xoá bài",

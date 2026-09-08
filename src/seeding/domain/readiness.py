@@ -43,7 +43,7 @@ def check(account: Account, profile: Profile | None) -> Readiness:
     if account.status is AccountStatus.SUSPENDED:
         return Readiness(False, "the account is suspended")
     if account.status is AccountStatus.NEEDS_HUMAN:
-        return Readiness(False, "waiting for a person in the takeover queue")
+        return Readiness(False, "đang chờ người xử lý trong hàng chờ (xem Tổng quan)")
 
     if account.platform in API_PLATFORMS:
         if not account.secrets_enc:
@@ -55,9 +55,12 @@ def check(account: Account, profile: Profile | None) -> Readiness:
     if profile.proxy_id is None and account.role is not AccountRole.BOOSTER:
         # Day la cai bay: no KHONG lam job that bai. No lam job chay bang IP that.
         # Booster (tuong tac cheo) la ngoai le co chu y: nguoi van hanh chon khong proxy.
-        return Readiness(False, "no proxy — it would go out on your own IP")
+        return Readiness(False, "chưa có proxy (no proxy) — chạy sẽ lộ IP máy bạn")
     if not profile.cookies_enc:
-        return Readiness(False, "never signed in — import a cookie or run login_profile.py")
+        return Readiness(
+            False,
+            "chưa từng đăng nhập (never signed in) — dán cookie hoặc Mở trình duyệt để đăng nhập",
+        )
 
     return Readiness(True)
 

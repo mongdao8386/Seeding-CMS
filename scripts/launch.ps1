@@ -451,7 +451,10 @@ $running = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
 if ($running) {
     Ok "da chay san"
 } else {
-    StartWindow 'Seeding - Worker' "`"$venvPython`" -m arq seeding.worker.settings.WorkerSettings"
+    # run_worker.cmd la vong lap: worker chet (loi la, mat Redis, sap nguon giua job) thi
+    # 5 giay sau tu bat lai. 08/09/2026: cua so worker con mo ma tien trinh python da chet
+    # tu luc nao, lich nuoi dung im ca buoi khong ai biet.
+    StartWindow 'Seeding - Worker' "`"$root\scriptsun_worker.cmd`""
     Ok "dang khoi dong (day la thu that su dang bai)"
 }
 

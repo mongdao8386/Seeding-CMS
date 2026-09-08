@@ -325,7 +325,7 @@ ACTIVITY_MAX_ATTEMPTS = 3
 # Mot acc chi mo MOT trinh duyet mot luc. Hai job cua cung acc chay song song (job thu lai
 # sau 45 phut trung gio job ke tiep) la hai "thiet bi" cung dang nhap tu mot proxy - dau
 # vet khong nguoi that nao de lai. TTL bang job_timeout de khoa khong bao gio ket mai.
-ACCOUNT_LOCK_TTL = 900
+ACCOUNT_LOCK_TTL = 1500
 
 
 async def run_activity_job(ctx: dict, job_id: str) -> str:

@@ -73,6 +73,13 @@ async def plan_for_account(
 
 
 async def plan_all(session: AsyncSession, *, day: date | None = None) -> int:
+    """Duong trinh duyet (mac dinh): PHIEN LUOT XEM - dich tim ngay trong trinh duyet,
+    khong doc feed/tim kiem qua HTTP (tim kiem HTTP tra rong tu 08/09/2026). Duong HTTP:
+    lich theo tung link nhu cu."""
+    if get_settings().tiktok_actions == "browser":
+        from seeding.platforms.tiktok import sitting
+
+        return await sitting.plan_all(session, day=day)
     return await outreach.plan_platform(
         session, Platform.TIKTOK, source_factory=TikTokWeb, profile_url=profile_url, day=day
     )

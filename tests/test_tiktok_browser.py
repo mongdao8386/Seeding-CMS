@@ -53,9 +53,23 @@ class _Locator:
         return "" if self.page.cleared else self.typed
 
 
+class _Keyboard:
+    def __init__(self, page):
+        self.page = page
+
+    async def press(self, key):
+        self.page.log.append(f"key:{key}")
+        if key == "ArrowDown" and self.page.next_urls:
+            self.page.url = self.page.next_urls.pop(0)
+            self.page.visible = {s for s in self.page.visible if "aria-pressed='true'" not in s}
+
+
 class _Page:
     def __init__(self, visible: set[str]):
         self.click_raises = None
+        self.url = VIDEO
+        self.next_urls: list[str] = []
+        self.keyboard = _Keyboard(self)
         self.visible = set(visible)
         self.log: list[str] = []
         self.url = VIDEO
@@ -157,7 +171,7 @@ async def test_like_watches_then_clicks_and_confirms_by_aria_pressed(monkeypatch
     res = await tb.run(
         _NoSession(), _profile(), _job(ActivityKind.ENGAGE, VIDEO), open=_Open(page), sleep=_sleep
     )
-    assert res.ok and res.detail == "liked", res.detail
+    assert res.ok and res.detail == "đã thả tim", res.detail
     assert page.log[0] == f"goto:{VIDEO}"
     assert WAITS[0] == 37, "xem dung duration_seconds cua job truoc khi bam"
     assert any(line.startswith("click:") for line in page.log)
@@ -170,7 +184,7 @@ async def test_already_liked_does_not_click_again(monkeypatch):
     res = await tb.run(
         _NoSession(), _profile(), _job(ActivityKind.ENGAGE, VIDEO), open=_Open(page), sleep=_sleep
     )
-    assert res.ok and res.detail == "already liked"
+    assert res.ok and res.detail == "đã thả tim từ trước"
     assert not any(line.startswith("click:") for line in page.log)
 
 
@@ -185,7 +199,7 @@ async def test_follow_opens_profile_and_reads_following(monkeypatch):
         open=_Open(page),
         sleep=_sleep,
     )
-    assert res.ok and res.detail == "followed"
+    assert res.ok and res.detail == "đã follow"
     assert page.log[0] == "goto:https://www.tiktok.com/@creator"
 
 
@@ -214,7 +228,7 @@ async def test_page_that_never_renders_is_retried_later(monkeypatch):
         _NoSession(), _profile(), _job(ActivityKind.ENGAGE, VIDEO), open=_Open(page), sleep=_sleep
     )
     assert not res.ok and res.retryable and res.checkpoint is None
-    assert "never rendered" in res.detail
+    assert "page never rendered" in res.detail
 
 
 async def test_checkpoint_on_the_page_goes_to_a_human(monkeypatch):
@@ -276,3 +290,121 @@ async def test_captcha_overlay_blocking_the_click_goes_to_a_human(monkeypatch):
     assert not res.ok and res.checkpoint is not None
     assert res.checkpoint.kind is CheckpointKind.CAPTCHA
     assert not res.retryable
+
+
+class _Collect:
+    """Session gia: gom job con ma phien luot ghi lai."""
+
+    def __init__(self):
+        self.added: list = []
+
+    def add_all(self, items):
+        self.added.extend(items)
+
+    async def get(self, model, key):
+        raise AssertionError("session.get duoc goi")
+
+
+def _sitting_job(**plan):
+    from seeding.platforms.tiktok import sitting
+
+    return ActivityJob(
+        id=uuid.uuid4(),
+        kind=ActivityKind.BROWSE_FEED,
+        target_url=sitting.Plan(**plan).dumps(),
+        duration_seconds=120,
+    )
+
+
+def _feed_page(visible, videos: int):
+    page = _Page(visible=set(visible))
+    page.url = "https://www.tiktok.com/@a/video/1"
+    page.next_urls = [f"https://www.tiktok.com/@c{i}/video/{i}" for i in range(2, videos + 1)]
+    return page
+
+
+async def test_sitting_watches_every_video_and_spends_the_budget(monkeypatch):
+    """4 video, 3 tim, 1 follow: video dau khong bam; ba video sau moi cai mot tim (tim con
+    lai == video con lai), follow ngay sau tim dau; moi hanh dong thanh mot job con."""
+    monkeypatch.setattr(tb, "detect", _no_checkpoint)
+    r = tb.Recipe()
+    page = _feed_page({r.like[0], r.follow[0]}, videos=4)
+    session = _Collect()
+    res = await tb.run(
+        session,
+        _profile(),
+        _sitting_job(videos=4, likes=3, follows=1),
+        open=_Open(page),
+        rng=random.Random(3),
+        sleep=_sleep,
+    )
+    assert res.ok, res.detail
+    assert page.log.count(f"click:{r.like[0]}") == 3
+    assert page.log.count(f"click:{r.follow[0]}") == 1
+    assert page.log.count("key:ArrowDown") == 3
+    kinds = sorted(j.kind.value for j in session.added)
+    assert kinds == ["engage", "engage", "engage", "follow"]
+    assert all(j.status.value == "succeeded" for j in session.added)
+    assert {j.target_url for j in session.added} <= {
+        "https://www.tiktok.com/@c2/video/2",
+        "https://www.tiktok.com/@c3/video/3",
+        "https://www.tiktok.com/@c4/video/4",
+    }, "job con mang link video that, khong phai link ke hoach"
+    assert "xem 4 video" in res.detail and "thả tim 3" in res.detail and "follow 1" in res.detail
+
+
+async def test_watch_only_sitting_never_clicks(monkeypatch):
+    monkeypatch.setattr(tb, "detect", _no_checkpoint)
+    r = tb.Recipe()
+    page = _feed_page({r.like[0], r.follow[0]}, videos=3)
+    session = _Collect()
+    res = await tb.run(session, _profile(), _sitting_job(videos=3), open=_Open(page), sleep=_sleep)
+    assert res.ok and "chỉ xem" in res.detail and "xem 3 video" in res.detail
+    assert not [e for e in page.log if e.startswith("click:")]
+    assert session.added == []
+    assert page.log.count("key:ArrowDown") == 2
+
+
+async def test_sitting_that_cannot_advance_stops_but_keeps_what_it_did(monkeypatch):
+    monkeypatch.setattr(tb, "detect", _no_checkpoint)
+    monkeypatch.setattr(tb, "NEXT_WAIT_S", 2)
+    r = tb.Recipe()
+    page = _feed_page({r.like[0]}, videos=5)
+    page.next_urls = page.next_urls[:1]  # chi sang duoc mot lan
+    session = _Collect()
+    res = await tb.run(
+        session,
+        _profile(),
+        _sitting_job(videos=5, likes=1),
+        open=_Open(page),
+        rng=random.Random(1),
+        sleep=_sleep,
+    )
+    assert res.ok and "xem 2 video" in res.detail and "không sang được" in res.detail
+
+
+async def test_sitting_hands_a_checkpoint_to_a_human_with_actions_so_far(monkeypatch):
+    calls = {"n": 0}
+
+    async def captcha_on_third_video(page, platform=None):
+        from seeding.browser.checkpoints import Checkpoint, CheckpointKind
+
+        calls["n"] += 1
+        if calls["n"] >= 4:  # 1 sau goto, 2-3 truoc hai video dau, 4 truoc video thu ba
+            return Checkpoint(CheckpointKind.CAPTCHA, "found #captcha-verify-container-main-page")
+        return None
+
+    monkeypatch.setattr(tb, "detect", captcha_on_third_video)
+    r = tb.Recipe()
+    page = _feed_page({r.like[0]}, videos=4)
+    session = _Collect()
+    res = await tb.run(
+        session,
+        _profile(),
+        _sitting_job(videos=4, likes=3),
+        open=_Open(page),
+        rng=random.Random(3),
+        sleep=_sleep,
+    )
+    assert not res.ok and res.checkpoint is not None and res.checkpoint.kind.value == "captcha"
+    assert len(session.added) == 1, "tim cua video thu hai da ghi lai truoc khi dung"

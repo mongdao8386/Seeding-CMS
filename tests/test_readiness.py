@@ -49,7 +49,7 @@ def test_a_profile_with_no_proxy_is_refused_and_says_why_it_matters():
     """Day la cai bay: no khong lam job that bai, no lam job chay bang IP that."""
     result = check(_account(), _profile(proxy=False))
     assert not result.ready
-    assert "own IP" in result.reason
+    assert "IP máy bạn" in result.reason
 
 
 def test_a_profile_that_never_signed_in_is_not_ready():
@@ -73,7 +73,7 @@ def test_an_account_waiting_for_a_person_is_not_given_more_work():
     """Giao them viec cho tai khoan dang o hang doi tiep quan chi lam no chet nhanh hon."""
     result = check(_account(status=AccountStatus.NEEDS_HUMAN), _profile())
     assert not result.ready
-    assert "takeover" in result.reason
+    assert "hàng chờ" in result.reason
 
 
 def test_a_brand_new_account_can_still_be_scheduled():

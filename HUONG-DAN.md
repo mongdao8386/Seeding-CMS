@@ -152,6 +152,17 @@ nào không tải nổi trang thì job thả tim báo "page never rendered" và 
 proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
 thẳng) đã thử: TikTok trả trang "Không thể mở trang", nên để trống.
 
+**Phiên lướt xem (từ 08/09/2026, đường trình duyệt).** Thay vì mở từng link video để
+thả tim (8 phút trình duyệt cho một cú bấm, và không người thật nào mở sáu link rời rạc
+từ hư không), mỗi ngày acc có **2–3 phiên lướt**: mở For You (một phiên trong ngày mở
+trang tìm kiếm theo từ khoá), cuộn qua 4–8 video, xem mỗi video 20–45 giây, thỉnh
+thoảng thả tim / follow / bình luận sticker / đăng lại theo ngân sách ngày, tối đa 12
+phút một phiên. Video đầu tiên không bấm gì; follow, bình luận, đăng lại chỉ trên video
+vừa thả tim. Ngày đầu warm-up **chỉ xem, không bấm** (`WARM_WATCH_ONLY_DAYS`, mặc định
+1) vì với TikTok, thời gian xem mới là thứ thuật toán để ý ở acc mới. Dòng thời gian
+hiện "Lướt For You: 6 video, 2 tim" và bên dưới là từng lượt thả tim với link video
+thật. Gặp captcha giữa phiên: dừng, giữ lại những gì đã làm, đưa acc vào hàng chờ người.
+
 **Đăng lại (repost)**: 0–1 lần/ngày, chỉ từ ngày thứ 2 của warm-up, chỉ video đã thả
 tim, xem lại 30–45 giây, sau thả tim ít nhất 3 phút, và không trùng video đã bình luận.
 TikTok đi qua endpoint Repost của trang web (**chưa kiểm chứng trên acc thật**), X là

@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import structlog
 from playwright.async_api import Error as PlaywrightError
@@ -27,9 +29,17 @@ from seeding.browser.checkpoints import Checkpoint, CheckpointKind, detect
 from seeding.browser.session import open_profile
 from seeding.config import get_settings
 from seeding.content.comments import warm_comment
-from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
+from seeding.domain.models import (
+    Account,
+    ActivityJob,
+    ActivityKind,
+    JobStatus,
+    Platform,
+    Profile,
+)
 from seeding.platforms.base import InteractResult, register_interact
 from seeding.platforms.outreach import direct_ok, ensure_proxy_loaded, watch_seconds
+from seeding.platforms.tiktok import sitting as sitting_mod
 from seeding.platforms.tiktok.health import session_dead
 from seeding.platforms.tiktok.interact import parse_target
 from seeding.platforms.tiktok.web import ORIGIN
@@ -106,11 +116,9 @@ async def run(
     rng = rng or random.Random()
     await ensure_proxy_loaded(session, profile)
     if profile is None or (profile.proxy is None and not direct_ok(job)):
-        return InteractResult(
-            False, "profile has no proxy - refusing to touch TikTok from the host IP"
-        )
+        return InteractResult(False, "chưa có proxy (no proxy) - không mở TikTok bằng IP máy chủ")
     if not profile.cookies_enc:
-        return InteractResult(False, "profile has never signed in")
+        return InteractResult(False, "profile chưa từng đăng nhập")
     # Phien chet thi trang van hien nut tim va nut van chuyen sang "da thich" khi bam -
     # TikTok chi khong luu (P03, 08/09/2026). Hoi TikTok 2 giay truoc khi ton 8 phut
     # trinh duyet; chet thi giao cho nguoi dang nhap lai.
@@ -119,17 +127,22 @@ async def run(
             False, reason, checkpoint=Checkpoint(CheckpointKind.LOGGED_OUT, reason)
         )
 
+    if job.kind is ActivityKind.BROWSE_FEED:
+        return await _run_sitting(
+            session, profile, job, open=open, rng=rng, sleep=sleep, recipe=recipe
+        )
+
     handle, item_id = parse_target(job.target_url)
     if job.kind is ActivityKind.FOLLOW and job.target_account_id is not None:
         target = await session.get(Account, job.target_account_id)
         handle = target.handle if target else handle
     if job.kind is ActivityKind.FOLLOW:
         if not handle:
-            return InteractResult(False, "follow job has no target handle")
+            return InteractResult(False, "job follow không có tên người cần follow")
         url = profile_url(handle)
     else:
         if not item_id:
-            return InteractResult(False, f"{job.kind.value} job has no video url")
+            return InteractResult(False, f"job {job.kind.value} không có link video")
         url = job.target_url
 
     try:
@@ -155,8 +168,8 @@ async def run(
                     return InteractResult(False, blocked.evidence, checkpoint=blocked)
                 return InteractResult(
                     False,
-                    f"page never rendered its action bar in {GOTO_TIMEOUT_MS // 1000}s "
-                    "(slow proxy or a blank shell) - it will be retried",
+                    f"trang không hiện thanh hành động trong {GOTO_TIMEOUT_MS // 1000}s "
+                    "(proxy chậm hoặc trang trống, page never rendered) - sẽ thử lại",
                     retryable=True,
                 )
 
@@ -180,7 +193,7 @@ async def run(
                 # checkpoint cho nguoi, khong phai loi tam de thu lai.
                 if blocked := await detect(page, Platform.TIKTOK):
                     return InteractResult(False, blocked.evidence, checkpoint=blocked)
-                return InteractResult(False, f"click blocked: {_short(exc)}", retryable=True)
+                return InteractResult(False, f"cú bấm bị chặn: {_short(exc)}", retryable=True)
 
             if not result.ok and result.checkpoint is None:
                 if blocked := await detect(page, Platform.TIKTOK):
@@ -221,31 +234,31 @@ async def _wait_with_nudge(page, selectors, timeout_ms: int, rng, sleep):
 
 async def _like(page, r: Recipe, rng, sleep) -> InteractResult:
     if await actions.present(page, r.liked):
-        return InteractResult(True, "already liked")
+        return InteractResult(True, "đã thả tim từ trước")
     button = await actions.first_visible(page, r.like)
     if button is None:
         return InteractResult(False, actions.selector_miss("the like button", r.like))
     await button.click(timeout=CLICK_MS)
     await humanize.dwell(low=1.0, high=3.0, rng=rng, sleep=sleep)
     if await actions.wait_visible(page, r.liked, timeout_ms=CONFIRM_MS):
-        return InteractResult(True, "liked")
+        return InteractResult(True, "đã thả tim")
     return InteractResult(
         False,
-        "clicked like but the button never showed as pressed - it MAY have worked",
+        "đã bấm tim nhưng nút không chuyển sang đã thích - CÓ THỂ đã được, sẽ kiểm lại",
         retryable=True,
     )
 
 
 async def _follow(page, r: Recipe, rng, sleep) -> InteractResult:
     if await actions.present(page, r.following):
-        return InteractResult(True, "already following")
+        return InteractResult(True, "đã follow từ trước")
     button = await actions.first_visible(page, r.follow)
     if button is None:
         return InteractResult(False, actions.selector_miss("the follow button", r.follow))
     await button.click(timeout=CLICK_MS)
     await humanize.dwell(low=1.5, high=4.0, rng=rng, sleep=sleep)
     if await actions.present(page, r.following):
-        return InteractResult(True, "followed")
+        return InteractResult(True, "đã follow")
     return InteractResult(False, "clicked follow but saw no confirmation", retryable=True)
 
 
@@ -282,7 +295,7 @@ async def _comment(page, r: Recipe, text: str, rng, sleep) -> InteractResult:
 
 async def _repost(page, r: Recipe, rng, sleep) -> InteractResult:
     if await actions.present(page, r.reposted):
-        return InteractResult(True, "already reposted")
+        return InteractResult(True, "đã đăng lại từ trước")
     opener = await actions.first_visible(page, r.share_open)
     if opener is None:
         return InteractResult(False, actions.selector_miss("the share button", r.share_open))
@@ -294,9 +307,240 @@ async def _repost(page, r: Recipe, rng, sleep) -> InteractResult:
     await button.click(timeout=CLICK_MS)
     await humanize.dwell(low=1.5, high=3.0, rng=rng, sleep=sleep)
     if await actions.present(page, r.reposted):
-        return InteractResult(True, "reposted")
+        return InteractResult(True, "đã đăng lại")
     return InteractResult(False, "clicked repost but saw no confirmation", retryable=True)
 
 
 if get_settings().tiktok_actions == "browser":
     register_interact(Platform.TIKTOK, run)
+
+
+# ------------------------------------------------------------------ phien luot xem
+
+# Sang video ke tiep: TikTok web nhan phim mui ten xuong tren For You va trong trinh
+# phat; trang ket qua tim kiem co nut mui ten phai. Khong duoc thi cuon.
+NEXT_VIDEO = ("button[data-e2e='arrow-right']", "[data-e2e='arrow-right']")
+SEARCH_ITEM = (
+    "[data-e2e='search_video-item'] a",
+    "[data-e2e='search_top-item'] a",
+    "[data-e2e='search-card-video-link']",
+)
+# Doi URL sang video moi sau khi bam sang: toi da tung nay giay.
+NEXT_WAIT_S = 20
+
+
+async def _run_sitting(
+    session, profile: Profile, job: ActivityJob, *, open, rng, sleep, recipe: Recipe
+) -> InteractResult:
+    plan = sitting_mod.decode(job.target_url) or sitting_mod.Plan()
+    try:
+        headless = get_settings().headless_jobs
+        async with open(profile, headless=headless, humanize=True) as (_b, context):
+            page = await context.new_page()
+            await page.goto(
+                plan.url(ORIGIN), wait_until="domcontentloaded", timeout=GOTO_TIMEOUT_MS
+            )
+            if blocked := await detect(page, Platform.TIKTOK):
+                return InteractResult(False, blocked.evidence, checkpoint=blocked)
+            if plan.source == "search":
+                item = await _wait_with_nudge(page, SEARCH_ITEM, GOTO_TIMEOUT_MS, rng, sleep)
+                if item is None:
+                    if blocked := await detect(page, Platform.TIKTOK):
+                        return InteractResult(False, blocked.evidence, checkpoint=blocked)
+                    return InteractResult(
+                        False,
+                        f"trang tìm kiếm không hiện kết quả trong {GOTO_TIMEOUT_MS // 1000}s "
+                        "(page never rendered) - sẽ thử lại",
+                        retryable=True,
+                    )
+                await humanize.dwell(low=2.0, high=5.0, rng=rng, sleep=sleep)
+                await item.click(timeout=CLICK_MS)
+            bar = await _wait_with_nudge(
+                page, recipe.like + recipe.liked, GOTO_TIMEOUT_MS, rng, sleep
+            )
+            if bar is None:
+                if blocked := await detect(page, Platform.TIKTOK):
+                    return InteractResult(False, blocked.evidence, checkpoint=blocked)
+                return InteractResult(
+                    False,
+                    f"trang không hiện thanh hành động trong {GOTO_TIMEOUT_MS // 1000}s "
+                    "(proxy chậm hoặc trang trống, page never rendered) - sẽ thử lại",
+                    retryable=True,
+                )
+            return await _browse(session, page, job, plan, recipe, rng, sleep)
+    except Exception as exc:
+        log.warning("tiktok_browser.failed", job=str(job.id), error=_short(exc))
+        return InteractResult(False, _short(exc), retryable=True)
+
+
+def _current_video(page) -> str | None:
+    url = str(getattr(page, "url", "") or "")
+    return url if "/video/" in url else None
+
+
+def _child(job: ActivityJob, kind: ActivityKind, url: str | None, secs: int, res: InteractResult):
+    """Mot hanh dong trong phien = mot job con da xong, de dong thoi gian va ngan sach
+    ngay (count_outward_for_day) dem duoc nhu job mo thang link."""
+    return ActivityJob(
+        account_id=job.account_id,
+        kind=kind,
+        status=JobStatus.SUCCEEDED if res.ok else JobStatus.FAILED,
+        scheduled_at=datetime.now(UTC),
+        duration_seconds=secs,
+        target_url=url or job.target_url,
+        detail=res.detail,
+        last_error=None if res.ok else res.detail,
+    )
+
+
+def _record(session, children: list) -> None:
+    add_all = getattr(session, "add_all", None)
+    if add_all is not None and children:
+        add_all(children)
+
+
+async def _watch(page, secs: int, rng, sleep) -> None:
+    """Xem `secs` giay: ngu tung khuc 6-12 giay, giua cac khuc di chuot nhe - trang co
+    nguoi ngoi truoc, khong phai mot tab bo quen."""
+    elapsed = 0.0
+    while elapsed < secs:
+        chunk = min(rng.uniform(6.0, 12.0), secs - elapsed)
+        await sleep(chunk)
+        elapsed += chunk
+        try:
+            await page.mouse.move(rng.randint(400, 900), rng.randint(200, 600))
+        except Exception:
+            pass
+
+
+async def _next_video(page, rng, sleep) -> bool:
+    """Sang video ke tiep: phim xuong, roi nut mui ten, roi cuon. Thanh cong = URL doi."""
+    before = str(getattr(page, "url", "") or "")
+    for how in ("key", "arrow", "wheel"):
+        try:
+            if how == "key":
+                await page.keyboard.press("ArrowDown")
+            elif how == "arrow":
+                button = await actions.first_visible(page, NEXT_VIDEO, timeout_ms=2_000)
+                if button is None:
+                    continue
+                await button.click(timeout=CLICK_MS)
+            else:
+                await page.mouse.wheel(0, rng.randint(600, 900))
+        except Exception:
+            continue
+        waited = 0.0
+        while waited < NEXT_WAIT_S:
+            step = rng.uniform(1.0, 2.5)
+            await sleep(step)
+            waited += step
+            if str(getattr(page, "url", "") or "") != before:
+                return True
+    return False
+
+
+async def _browse(session, page, job: ActivityJob, plan, r: Recipe, rng, sleep) -> InteractResult:
+    """Luot `plan.videos` video, xem moi video 20-45 giay, tieu ngan sach cua phien.
+
+    Video dau tien khong bam gi (nguoi that vao la luot vai cai da). Tha tim voi xac
+    suat tim-con-lai / video-con-lai, nen het phien la vua het ngan sach ma khong dinh
+    vao mot vi tri co dinh. Follow / binh luan / dang lai chi tren video vua tha tim.
+    """
+    started = time.monotonic()
+    left = {
+        "likes": plan.likes,
+        "follows": plan.follows,
+        "comments": plan.comments,
+        "reposts": plan.reposts,
+    }
+    done = {"likes": 0, "follows": 0, "comments": 0, "reposts": 0}
+    children: list = []
+    watched = 0
+    videos = 0
+    stopped = None
+
+    async def act(kind: ActivityKind, key: str, fn, url, secs):
+        """Mot hanh dong; tra ve checkpoint neu gap, None neu khong."""
+        try:
+            res = await fn()
+        except PlaywrightError as exc:
+            if blocked := await detect(page, Platform.TIKTOK):
+                return blocked
+            res = InteractResult(False, f"cú bấm bị chặn: {_short(exc)}")
+        left[key] -= 1
+        children.append(_child(job, kind, url, secs, res))
+        if res.ok:
+            done[key] += 1
+        elif res.checkpoint is not None:
+            return res.checkpoint
+        return None
+
+    def halted(blocked):
+        _record(session, children)
+        return InteractResult(False, blocked.evidence, checkpoint=blocked)
+
+    for i in range(plan.videos):
+        if time.monotonic() - started > sitting_mod.SITTING_MAX_S:
+            stopped = "hết giờ phiên"
+            break
+        if blocked := await detect(page, Platform.TIKTOK):
+            return halted(blocked)
+        secs = rng.randint(*sitting_mod.WATCH_RANGE)
+        await _watch(page, secs, rng, sleep)
+        watched += secs
+        videos += 1
+        url = _current_video(page)
+        remaining = plan.videos - i
+        liked = False
+        if i > 0 and left["likes"] > 0 and rng.random() < left["likes"] / remaining:
+            blocked = await act(
+                ActivityKind.ENGAGE, "likes", lambda: _like(page, r, rng, sleep), url, secs
+            )
+            if blocked:
+                return halted(blocked)
+            liked = children[-1].status is JobStatus.SUCCEEDED
+        if liked and left["follows"] > 0:
+            await humanize.dwell(low=2.0, high=6.0, rng=rng, sleep=sleep)
+            blocked = await act(
+                ActivityKind.FOLLOW, "follows", lambda: _follow(page, r, rng, sleep), url, secs
+            )
+            if blocked:
+                return halted(blocked)
+        if liked and left["comments"] > 0:
+            await humanize.dwell(low=3.0, high=8.0, rng=rng, sleep=sleep)
+            text = warm_comment(job.id, "tiktok", rng)
+            blocked = await act(
+                ActivityKind.COMMENT,
+                "comments",
+                lambda text=text: _comment(page, r, text, rng, sleep),
+                url,
+                secs,
+            )
+            if blocked:
+                return halted(blocked)
+        if liked and left["reposts"] > 0:
+            await humanize.dwell(low=2.0, high=6.0, rng=rng, sleep=sleep)
+            blocked = await act(
+                ActivityKind.REPOST, "reposts", lambda: _repost(page, r, rng, sleep), url, secs
+            )
+            if blocked:
+                return halted(blocked)
+        if i < plan.videos - 1 and not await _next_video(page, rng, sleep):
+            stopped = "không sang được video kế tiếp"
+            break
+
+    _record(session, children)
+    parts = [f"xem {videos} video ({watched}s)"]
+    if done["likes"]:
+        parts.append(f"thả tim {done['likes']}")
+    if done["follows"]:
+        parts.append(f"follow {done['follows']}")
+    if done["comments"]:
+        parts.append(f"bình luận {done['comments']}")
+    if done["reposts"]:
+        parts.append(f"đăng lại {done['reposts']}")
+    if not any(done.values()) and plan.watch_only:
+        parts.append("chỉ xem")
+    if stopped:
+        parts.append(stopped)
+    return InteractResult(videos > 0, ", ".join(parts), retryable=videos == 0)
