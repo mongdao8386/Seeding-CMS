@@ -301,6 +301,10 @@ async def activity_tick(ctx: dict) -> int:
 
 
 ACTIVITY_MAX_ATTEMPTS = 3
+# Mot acc chi mo MOT trinh duyet mot luc. Hai job cua cung acc chay song song (job thu lai
+# sau 45 phut trung gio job ke tiep) la hai "thiet bi" cung dang nhap tu mot proxy - dau
+# vet khong nguoi that nao de lai. TTL bang job_timeout de khoa khong bao gio ket mai.
+ACCOUNT_LOCK_TTL = 900
 
 
 async def run_activity_job(ctx: dict, job_id: str) -> str:
@@ -328,19 +332,38 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
         # dung lai cho no (da xay ra that 08/09/2026). expire_on_commit=False nen object van dung.
         await session.commit()
 
-        if job.kind is ActivityKind.IDENTITY:
-            runner = adapters.get_identity(job.account.platform)
-        elif job.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
-            runner = adapters.get_manage(job.account.platform)
-        else:
-            runner = adapters.get_interact(job.account.platform)
-        if runner is None:
-            result = adapters.InteractResult(
-                False,
-                f"chưa có đường {job.kind.value} cho {job.account.platform.value} (hoặc đang tắt)",
-            )
-        else:
-            result = await runner(session, profile, job)
+        redis = ctx.get("redis")
+        lock_key = f"lock:account:{job.account_id}"
+        if redis is not None and not await redis.set(
+            lock_key, job_id, nx=True, ex=ACCOUNT_LOCK_TTL
+        ):
+            # Acc dang ban voi job khac: tra ve hang doi, thu lai sau vai phut, khong tinh
+            # la mot lan thu.
+            job.attempt_count -= 1
+            job.status = JobStatus.SCHEDULED
+            job.scheduled_at = datetime.now(UTC) + timedelta(minutes=3)
+            await session.commit()
+            log.info("activity.deferred", job=job_id, handle=job.account.handle)
+            return "deferred"
+
+        try:
+            if job.kind is ActivityKind.IDENTITY:
+                runner = adapters.get_identity(job.account.platform)
+            elif job.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
+                runner = adapters.get_manage(job.account.platform)
+            else:
+                runner = adapters.get_interact(job.account.platform)
+            if runner is None:
+                result = adapters.InteractResult(
+                    False,
+                    f"chưa có đường {job.kind.value} cho {job.account.platform.value}"
+                    " (hoặc đang tắt)",
+                )
+            else:
+                result = await runner(session, profile, job)
+        finally:
+            if redis is not None:
+                await redis.delete(lock_key)
 
         job.detail = result.detail
         if result.ok:
