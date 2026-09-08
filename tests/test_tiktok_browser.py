@@ -9,8 +9,21 @@ import random
 import uuid
 from types import SimpleNamespace
 
+import pytest
+
 from seeding.domain.models import ActivityJob, ActivityKind, Profile, Proxy
 from seeding.platforms.tiktok import interact_browser as tb
+
+
+@pytest.fixture(autouse=True)
+def _session_alive(monkeypatch):
+    """Mac dinh phien song; khong hoi TikTok that trong test."""
+
+    async def alive(profile):
+        return None
+
+    monkeypatch.setattr(tb, "session_dead", alive)
+
 
 VIDEO = "https://www.tiktok.com/@creator/video/7680526558917840148"
 
@@ -222,3 +235,19 @@ async def test_refuses_without_proxy():
     res = await tb.run(_NoSession(), p, _job(ActivityKind.ENGAGE, VIDEO), open=_Open(_Page(set())))
     assert not res.ok and "proxy" in res.detail
     assert isinstance(SimpleNamespace(), SimpleNamespace)
+
+
+async def test_dead_session_goes_to_a_human_without_opening_a_browser(monkeypatch):
+    async def dead(profile):
+        return "phiên chết: session_expired"
+
+    monkeypatch.setattr(tb, "session_dead", dead)
+    r = tb.Recipe()
+    page = _Page(visible={r.like[0]})
+    opened = _Open(page)
+    res = await tb.run(
+        _NoSession(), _profile(), _job(ActivityKind.ENGAGE, VIDEO), open=opened, sleep=_sleep
+    )
+    assert not res.ok and res.checkpoint is not None
+    assert res.checkpoint.kind.value == "logged_out"
+    assert not page.log, "browser must not have been opened"

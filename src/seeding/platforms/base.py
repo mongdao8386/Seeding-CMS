@@ -152,6 +152,7 @@ _MODULES = (
     "seeding.platforms.tiktok.interact",
     "seeding.platforms.tiktok.interact_browser",
     "seeding.platforms.tiktok.warm",
+    "seeding.platforms.tiktok.health",
     "seeding.platforms.tiktok.manage",
     "seeding.platforms.instagram.publish",
     "seeding.platforms.instagram.interact",

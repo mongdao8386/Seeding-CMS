@@ -29,6 +29,7 @@ from seeding.content.comments import warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
 from seeding.platforms.outreach import direct_ok, ensure_proxy_loaded, watch_seconds
+from seeding.platforms.tiktok.health import session_dead
 from seeding.platforms.tiktok.interact import parse_target
 from seeding.platforms.tiktok.web import ORIGIN
 
@@ -106,6 +107,13 @@ async def run(
         )
     if not profile.cookies_enc:
         return InteractResult(False, "profile has never signed in")
+    # Phien chet thi trang van hien nut tim va nut van chuyen sang "da thich" khi bam -
+    # TikTok chi khong luu (P03, 08/09/2026). Hoi TikTok 2 giay truoc khi ton 8 phut
+    # trinh duyet; chet thi giao cho nguoi dang nhap lai.
+    if reason := await session_dead(profile):
+        return InteractResult(
+            False, reason, checkpoint=Checkpoint(CheckpointKind.LOGGED_OUT, reason)
+        )
 
     handle, item_id = parse_target(job.target_url)
     if job.kind is ActivityKind.FOLLOW and job.target_account_id is not None:

@@ -20,6 +20,7 @@ from seeding.worker.tasks import (
     health_sweep,
     plan_activity,
     prune_media,
+    reclaim_orphans,
     run_activity_job,
     run_chatbot,
     run_post_job,
@@ -83,4 +84,5 @@ class WorkerSettings:
     @staticmethod
     async def on_startup(ctx: dict) -> None:
         configure_logging()
-        log.info("worker.started")
+        orphans = await reclaim_orphans()
+        log.info("worker.started", reclaimed=orphans)

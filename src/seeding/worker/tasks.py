@@ -264,6 +264,27 @@ async def plan_activity(ctx: dict) -> int:
     return created
 
 
+async def reclaim_orphans() -> int:
+    """Job dang RUNNING luc worker khoi dong la job mo coi: chi co mot worker, va no vua
+    chet/khoi dong lai giua chung (08/09/2026: job HA1 ket RUNNING mai sau khi restart).
+    Tra ve SCHEDULED de tick nhat lai; lan thu da dem roi nen khong dem them."""
+    from seeding.domain.models import ActivityJob
+
+    async with SessionLocal() as session:
+        acts = await session.execute(
+            update(ActivityJob)
+            .where(ActivityJob.status == JobStatus.RUNNING)
+            .values(status=JobStatus.SCHEDULED)
+        )
+        posts = await session.execute(
+            update(PostJob)
+            .where(PostJob.status == JobStatus.RUNNING)
+            .values(status=JobStatus.SCHEDULED)
+        )
+        await session.commit()
+    return (acts.rowcount or 0) + (posts.rowcount or 0)
+
+
 async def activity_tick(ctx: dict) -> int:
     """Quet job nuoi toi gio. Khong qua rate governor: tran cua governor la tran DANG BAI."""
     from seeding.domain.models import Account, ActivityJob

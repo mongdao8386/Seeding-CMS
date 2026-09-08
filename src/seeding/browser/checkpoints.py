@@ -66,6 +66,12 @@ _TEXT_MARKERS: list[tuple[str, CheckpointKind]] = [
     ("sign in to continue", CheckpointKind.LOGGED_OUT),
 ]
 
+# Nut "Dang nhap" tren dau trang: chi hien khi phien da chet. TikTok van hien nut tim
+# va van chuyen sang "da thich" khi bam trong trang thai nay - chi khong luu (08/09/2026).
+_LOGGED_OUT_SELECTORS: dict[Platform, tuple[str, ...]] = {
+    Platform.TIKTOK: ("#header-login-button", "button[data-e2e='top-login-button']"),
+}
+
 # Khung captcha nhung dich vu pho bien.
 _CAPTCHA_SELECTORS = (
     "iframe[src*='recaptcha']",
@@ -82,6 +88,13 @@ async def detect(page, platform: Platform | None = None) -> Checkpoint | None:
     for marker, kind in _URL_MARKERS.items():
         if marker in url:
             return Checkpoint(kind, f"url contains {marker!r}: {page.url}")
+
+    for selector in _LOGGED_OUT_SELECTORS.get(platform, ()):
+        try:
+            if await page.locator(selector).count():
+                return Checkpoint(CheckpointKind.LOGGED_OUT, f"found {selector}")
+        except Exception:
+            continue
 
     for selector in _CAPTCHA_SELECTORS:
         try:

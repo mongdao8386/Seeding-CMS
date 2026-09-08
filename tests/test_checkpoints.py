@@ -6,6 +6,7 @@ long tin vao hang doi.
 """
 
 from seeding.browser.checkpoints import CheckpointKind, detect
+from seeding.domain.models import Platform
 
 
 class FakePage:
@@ -88,3 +89,17 @@ async def test_a_page_that_cannot_be_read_is_not_reported_as_a_checkpoint():
             raise RuntimeError("Execution context was destroyed")
 
     assert await detect(Broken()) is None
+
+
+async def test_tiktok_login_button_means_the_session_is_dead():
+    """TikTok voi phien chet van hien trang video va nut tim binh thuong; dau hieu duy
+    nhat la nut Dang nhap tren dau trang."""
+    page = FakePage(url="https://www.tiktok.com/@a/video/1", selectors=("#header-login-button",))
+    found = await detect(page, Platform.TIKTOK)
+    assert found and found.kind is CheckpointKind.LOGGED_OUT
+    assert "header-login-button" in found.evidence
+
+
+async def test_login_button_selector_is_per_platform():
+    page = FakePage(url="https://x.com/home", selectors=("#header-login-button",))
+    assert await detect(page, Platform.X) is None

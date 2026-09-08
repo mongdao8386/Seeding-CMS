@@ -357,6 +357,15 @@ class TikTokWeb:
         )
         return parse_feed(body)
 
+    async def account_info(self) -> dict:
+        """passport/web/account/info: data.user_id khi phien song; data.name ==
+        "session_expired" khi sessionid da chet. Khong ky, khong msToken - chi cookie."""
+        assert self._client is not None
+        r = await self._client.get(
+            f"{ORIGIN}/passport/web/account/info/", params={"aid": "1459"}, timeout=30
+        )
+        return r.json()
+
     async def user(self, handle: str, sec_uid: str = "") -> dict:
         """{'id', 'secUid', 'uniqueId', 'followers'} cua mot nguoi, de follow."""
         body = await self._get("/api/user/detail/", {"uniqueId": handle, "secUid": sec_uid})
