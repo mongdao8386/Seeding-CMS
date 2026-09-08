@@ -56,6 +56,8 @@ export const api = {
     request<T>(path, { method: "POST", body: body === undefined ? "{}" : JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   /** Form: dùng cho các ô dán (text lớn) — server đọc bằng Form(...). */
   form: <T>(path: string, fields: Record<string, string | boolean | number>) => {
@@ -182,3 +184,73 @@ export type ProxyImportResult = {
 };
 
 export type OpenedProfile = { profile_id: string; handle: string; pid: number; detail: string };
+
+// ------------------------------------------------------------- noi dung & lich
+
+export type Media = {
+  id: string;
+  created_at: string;
+  filename: string;
+  original_name: string;
+  kind: "image" | "video";
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  has_thumbnail: boolean;
+  used_by: number;
+};
+
+export type Content = {
+  id: string;
+  created_at: string;
+  title: string;
+  body: string;
+  media: Media | null;
+  jobs_total: number;
+  jobs_succeeded: number;
+  jobs_scheduled: number;
+  combinations: number;
+};
+
+export type JobStatus = "pending" | "scheduled" | "running" | "succeeded" | "failed" | "needs_human" | "skipped";
+
+export type Job = {
+  id: string;
+  campaign_id: string;
+  content_id: string | null;
+  account_id: string;
+  handle: string;
+  platform: Platform;
+  status: JobStatus;
+  scheduled_at: string;
+  title: string;
+  body: string;
+  remote_url: string | null;
+  last_error: string | null;
+  attempt_count: number;
+};
+
+export type Slot = { platform: Platform; weekday: number; hour: number; minute: number };
+export type SlotMeta = { timezone: string; weekdays: string[] };
+
+export const BASE_URL = BASE;
+
+/** Upload một file (multipart). */
+export async function uploadMedia(file: File): Promise<Media> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const bearer = token.get();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/media`, {
+      method: "POST",
+      body: fd,
+      headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+    });
+  } catch {
+    throw new ApiError(`Không gọi được API ở ${BASE}.`, 0);
+  }
+  if (!res.ok) throw new ApiError(await parseError(res), res.status);
+  return (await res.json()) as Media;
+}

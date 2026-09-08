@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Query
 
 from seeding.config import get_settings
 
@@ -21,8 +21,15 @@ def new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-async def require_token(authorization: str | None = Header(default=None)) -> None:
+async def require_token(
+    authorization: str | None = Header(default=None),
+    t: str | None = Query(default=None),
+) -> None:
+    """Bearer header, hoac `?t=<token>` cho nhung cho trinh duyet khong gan header duoc
+    (the <img> tai anh xem truoc). Cung mot token, cung mot phep so sanh."""
     settings = get_settings()
+    if authorization is None and t:
+        authorization = f"Bearer {t}"
 
     if not settings.api_token:
         raise HTTPException(

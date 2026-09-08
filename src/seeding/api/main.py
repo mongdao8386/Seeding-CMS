@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from seeding.api import accounts, profiles, proxies, system
+from seeding.api import accounts, content, profiles, proxies, schedule, slots, system
 from seeding.api.security import require_token
 from seeding.config import get_settings
 from seeding.worker.settings import force_utf8_output
@@ -33,5 +33,13 @@ async def health() -> dict:
     return {"ok": True, "authenticated": bool(get_settings().api_token)}
 
 
-for r in (accounts.router, proxies.router, profiles.router, system.router):
+for r in (
+    accounts.router,
+    proxies.router,
+    profiles.router,
+    content.router,
+    schedule.router,
+    slots.router,
+    system.router,
+):
     app.include_router(r, dependencies=[Depends(require_token)])

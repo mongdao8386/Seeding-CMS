@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from seeding.domain.models import AccountStatus, Platform, ProxyKind, ProxyStatus
+from seeding.domain.models import (
+    AccountStatus,
+    JobStatus,
+    MediaKind,
+    Platform,
+    ProxyKind,
+    ProxyStatus,
+)
 
 
 class Page[T](BaseModel):
@@ -151,3 +158,131 @@ class SystemOut(BaseModel):
     database: bool
     signer: bool
     signer_detail: str | None
+
+
+# ------------------------------------------------------------------- noi dung
+
+
+class MediaOut(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    filename: str
+    original_name: str
+    kind: MediaKind
+    size_bytes: int
+    width: int | None
+    height: int | None
+    duration_seconds: float | None
+    has_thumbnail: bool
+    used_by: int
+
+
+class ContentIn(BaseModel):
+    title: str
+    body: str = ""
+    media_id: uuid.UUID | None = None
+
+
+class ContentPatch(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    media_id: uuid.UUID | None = None
+    clear_media: bool = False
+
+
+class ContentOut(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    title: str
+    body: str
+    media: MediaOut | None
+    jobs_total: int
+    jobs_succeeded: int
+    jobs_scheduled: int
+    # So bien the khac nhau ma spintax + tui hashtag co the sinh ra.
+    combinations: int
+
+
+class PreviewIn(BaseModel):
+    title: str
+    body: str = ""
+
+
+class PreviewOut(BaseModel):
+    samples: list[dict]
+    combinations: int
+
+
+# ----------------------------------------------------------------------- lich
+
+
+class ScheduleIn(BaseModel):
+    content_id: uuid.UUID
+    account_ids: list[uuid.UUID]
+    # Ngay bat dau (gio dia phuong). None hoac hom nay = tu bay gio.
+    start_date: date | None = None
+    stagger_seconds: int = 3600
+
+
+class JobMove(BaseModel):
+    date: date
+    hour: int | None = None
+
+
+class JobOut(BaseModel):
+    id: uuid.UUID
+    campaign_id: uuid.UUID
+    content_id: uuid.UUID | None
+    account_id: uuid.UUID
+    handle: str
+    platform: Platform
+    status: JobStatus
+    scheduled_at: datetime
+    title: str
+    body: str
+    remote_url: str | None
+    last_error: str | None
+    attempt_count: int
+
+
+class AttemptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    started_at: datetime
+    finished_at: datetime | None
+    ok: bool
+    remote_url: str | None
+    error: str | None
+
+
+# ------------------------------------------------------------------- gio vang
+
+
+class SlotTime(BaseModel):
+    hour: int
+    minute: int = 0
+
+
+class SlotIn(BaseModel):
+    platform: Platform
+    weekdays: list[int]  # 0 = Thu Hai ... 6 = Chu Nhat
+    times: list[SlotTime] = []
+    # Dang ngan: chi gio chan. `hours: [6, 10, 22]` == times 06:00, 10:00, 22:00.
+    hours: list[int] = []
+
+    def all_times(self) -> list[SlotTime]:
+        return [*self.times, *(SlotTime(hour=h) for h in self.hours)]
+
+
+class SlotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    platform: Platform
+    weekday: int
+    hour: int
+    minute: int
+
+
+class SlotMeta(BaseModel):
+    timezone: str
+    weekdays: list[str]
