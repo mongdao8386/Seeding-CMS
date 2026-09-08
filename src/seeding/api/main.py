@@ -5,7 +5,16 @@ from __future__ import annotations
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from seeding.api import accounts, content, profiles, proxies, schedule, slots, system
+from seeding.api import (
+    accounts,
+    activity,
+    content,
+    profiles,
+    proxies,
+    schedule,
+    slots,
+    system,
+)
 from seeding.api.security import require_token
 from seeding.config import get_settings
 from seeding.worker.settings import force_utf8_output
@@ -35,6 +44,7 @@ async def health() -> dict:
 
 for r in (
     accounts.router,
+    activity.router,
     proxies.router,
     profiles.router,
     content.router,

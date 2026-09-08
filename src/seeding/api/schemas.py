@@ -286,3 +286,30 @@ class SlotOut(BaseModel):
 class SlotMeta(BaseModel):
     timezone: str
     weekdays: list[str]
+
+
+# ----------------------------------------------------------- dong thoi gian
+
+
+class TimelineItem(BaseModel):
+    at: datetime
+    # post | like | follow | comment | repost | browse | session
+    kind: str
+    status: JobStatus | None
+    title: str
+    detail: str | None
+    url: str | None
+
+
+class KindCount(BaseModel):
+    planned: int
+    done: int
+    failed: int
+
+
+class ActivitySummary(BaseModel):
+    date: date
+    likes: KindCount
+    follows: KindCount
+    comments: KindCount
+    accounts_warming: int

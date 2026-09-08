@@ -234,6 +234,26 @@ export type Job = {
 export type Slot = { platform: Platform; weekday: number; hour: number; minute: number };
 export type SlotMeta = { timezone: string; weekdays: string[] };
 
+// ---------------------------------------------------------------- nuôi
+
+export type TimelineItem = {
+  at: string;
+  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session";
+  status: JobStatus | null;
+  title: string;
+  detail: string | null;
+  url: string | null;
+};
+
+export type KindCount = { planned: number; done: number; failed: number };
+export type ActivitySummary = {
+  date: string;
+  likes: KindCount;
+  follows: KindCount;
+  comments: KindCount;
+  accounts_warming: number;
+};
+
 export const BASE_URL = BASE;
 
 /** Upload một file (multipart). */

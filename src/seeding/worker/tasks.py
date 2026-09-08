@@ -220,3 +220,114 @@ async def prune_media(ctx: dict) -> int:
     if result["removed"]:
         log.info("prune_media.done", **result)
     return int(result["removed"])
+
+
+# ------------------------------------------------------------------ nuoi (phan 3)
+
+
+async def plan_activity(ctx: dict) -> int:
+    """Lap lich nuoi huong ra ngoai cho hom nay. Chay moi sang va luc khoi dong; ngay da
+    co lich thi khong lam lai (warm.plan_for_account tu kiem)."""
+    from seeding.platforms.tiktok import warm
+
+    if not get_settings().tiktok_interact_via_http:
+        return 0
+    async with SessionLocal() as session:
+        created = await warm.plan_all(session)
+    if created:
+        log.info("plan_activity.done", outward=created)
+    return created
+
+
+async def activity_tick(ctx: dict) -> int:
+    """Quet job nuoi toi gio. Khong qua rate governor: tran cua governor la tran DANG BAI."""
+    from seeding.domain.models import Account, AccountStatus, ActivityJob
+
+    now = datetime.now(UTC)
+    enqueued = 0
+    async with SessionLocal() as session:
+        due = (
+            await session.execute(
+                select(ActivityJob)
+                .join(Account, Account.id == ActivityJob.account_id)
+                .where(
+                    ActivityJob.status == JobStatus.SCHEDULED,
+                    ActivityJob.scheduled_at <= now,
+                    Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
+                )
+                .order_by(ActivityJob.scheduled_at)
+                .limit(50)
+            )
+        ).scalars()
+        for job in list(due):
+            claimed = await session.execute(
+                update(ActivityJob)
+                .where(ActivityJob.id == job.id, ActivityJob.status == JobStatus.SCHEDULED)
+                .values(status=JobStatus.RUNNING)
+            )
+            await session.commit()
+            if claimed.rowcount != 1:
+                continue
+            await ctx["redis"].enqueue_job("run_activity_job", str(job.id))
+            enqueued += 1
+    if enqueued:
+        log.info("activity_tick.enqueued", count=enqueued)
+    return enqueued
+
+
+ACTIVITY_MAX_ATTEMPTS = 3
+
+
+async def run_activity_job(ctx: dict, job_id: str) -> str:
+    from seeding.domain.models import ActivityJob, Platform
+    from seeding.platforms.tiktok import interact
+
+    async with SessionLocal() as session:
+        job = (
+            (await session.execute(select(ActivityJob).where(ActivityJob.id == uuid.UUID(job_id))))
+            .unique()
+            .scalar_one()
+        )
+        job.attempt_count += 1
+        profile = await profiles_mod.get_for_account(session, job.account_id)
+
+        verdict = readiness.check(job.account, profile)
+        if not verdict.ready:
+            job.status = JobStatus.SKIPPED
+            job.last_error = verdict.reason
+            await session.commit()
+            log.warning("activity.not_ready", handle=job.account.handle, reason=verdict.reason)
+            return job.status.value
+
+        if job.account.platform is Platform.TIKTOK and get_settings().tiktok_interact_via_http:
+            result = await interact.run(session, profile, job)
+        else:
+            result = interact.InteractResult(
+                False, f"nuôi {job.account.platform.value} qua HTTP vào ở phần 5-6"
+            )
+
+        job.detail = result.detail
+        if result.ok:
+            job.status = JobStatus.SUCCEEDED
+            job.last_error = None
+        elif result.checkpoint and not result.checkpoint.is_terminal:
+            job.status = JobStatus.NEEDS_HUMAN
+            job.last_error = result.detail
+            job.account.status = AccountStatus.NEEDS_HUMAN
+        elif result.retryable and job.attempt_count < ACTIVITY_MAX_ATTEMPTS:
+            job.status = JobStatus.SCHEDULED
+            job.scheduled_at = datetime.now(UTC) + timedelta(minutes=45)
+            job.last_error = result.detail
+        else:
+            job.status = JobStatus.FAILED
+            job.last_error = result.detail
+        await session.commit()
+        log.info(
+            "activity.finished",
+            job=job_id,
+            handle=job.account.handle,
+            kind=job.kind.value,
+            status=job.status.value,
+            detail=result.detail,
+        )
+        return job.status.value

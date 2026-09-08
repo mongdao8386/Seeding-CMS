@@ -59,6 +59,21 @@ Giờ vàng đặt ở **Cài đặt**: bật/tắt từng giờ cho từng th�
 Hai ngày đầu của warm-up job vẫn nằm lịch nhưng worker **không đăng** — nó lùi bài tới
 giờ vàng đầu tiên sau khi hết ngày im lặng. Đây là cố ý.
 
+## 3b. Nuôi tài khoản (phần 3)
+
+Không phải bật gì. Mỗi sáng (và lúc `Start.cmd` khởi động) worker đọc **For You của
+chính từng tài khoản** qua proxy của nó, chọn vài video đang lên của người lạ, rồi rải
+trong ngày: 4–8 thả tim, 1–3 follow creator, 0–2 bình luận (ngày đầu một nửa, không bình
+luận). Bình luận chỉ vào video đã thả tim, sau ít nhất 8 phút, câu lấy từ bộ tiếng Việt
+đời thường trong `platforms/tiktok/interact.py`.
+
+Nhìn ở đâu: **Tổng quan** có dòng "hôm nay: x/y thả tim · follow · bình luận"; bấm vào một
+tài khoản thấy **dòng thời gian** — đăng bài và từng lần thả tim / follow / bình luận,
+cái nào xong, cái nào hỏng.
+
+Tắt bằng `TIKTOK_INTERACT_VIA_HTTP=false`. Thả tim và follow được thử lại khi không rõ
+kết quả; bình luận thì không — vào "cần bạn".
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua

@@ -1,7 +1,7 @@
 """Cau hinh worker ARQ.  Chay bang:  arq seeding.worker.settings.WorkerSettings
 
-Phan 2: dang bai (tick moi 30 giay, run_post_job, don media hang ngay). Nuoi tai
-khoan vao o phan 3, kiem suc khoe phien o phan 4.
+Dang bai (tick moi 30 giay), nuoi tai khoan (activity_tick moi phut, plan_activity moi
+sang), don media hang ngay. Kiem suc khoe phien vao o phan 4.
 """
 
 from __future__ import annotations
@@ -14,7 +14,14 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from seeding.config import get_settings
-from seeding.worker.tasks import prune_media, run_post_job, tick
+from seeding.worker.tasks import (
+    activity_tick,
+    plan_activity,
+    prune_media,
+    run_activity_job,
+    run_post_job,
+    tick,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -47,9 +54,12 @@ async def heartbeat(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_post_job]
+    functions = [run_post_job, run_activity_job]
     cron_jobs = [
         cron(tick, second={0, 30}, run_at_startup=True),
+        # Nuoi: quet moi phut; lap lich moi sang som va luc khoi dong (ngay da co thi bo qua).
+        cron(activity_tick, second={15}),
+        cron(plan_activity, hour={6}, minute={0}, run_at_startup=True),
         cron(prune_media, hour={4}, minute={30}),
         cron(heartbeat, minute=set(range(0, 60, 5)), run_at_startup=True),
     ]
