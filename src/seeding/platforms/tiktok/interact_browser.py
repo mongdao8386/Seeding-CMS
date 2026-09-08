@@ -41,23 +41,39 @@ GOTO_TIMEOUT_MS = 300_000
 
 @dataclass(frozen=True, slots=True)
 class Recipe:
-    like: tuple[str, ...] = ("button:has(span[data-e2e='like-icon'])", "span[data-e2e='like-icon']")
-    liked: tuple[str, ...] = ("button[aria-pressed='true']:has(span[data-e2e='like-icon'])",)
-    follow: tuple[str, ...] = ("button[data-e2e='follow-button']",)
+    """Do that 08/09/2026 tren trang video (giao dien moi): nut tim la
+    div[role=button][data-e2e=like-icon] co aria-pressed va aria-label "Thich video ...",
+    follow ngay tren video la button[data-e2e=feed-follow]; thanh hanh dong chi ve sau khi
+    co di chuot / cuon."""
+
+    like: tuple[str, ...] = (
+        "[role='button'][data-e2e='like-icon']",
+        "[data-e2e='like-icon']",
+        "[data-e2e='browse-like-icon']",
+    )
+    liked: tuple[str, ...] = (
+        "[data-e2e='like-icon'][aria-pressed='true']",
+        "[data-e2e='browse-like-icon'][aria-pressed='true']",
+    )
+    follow: tuple[str, ...] = ("button[data-e2e='follow-button']", "button[data-e2e='feed-follow']")
     following: tuple[str, ...] = (
         "button[data-e2e='follow-button']:has-text('Following')",
         "button[data-e2e='follow-button']:has-text('Đang')",
+        "button[data-e2e='feed-follow']:has-text('Đang')",
     )
-    comment_open: tuple[str, ...] = ("[data-e2e='comment-icon']",)
+    comment_open: tuple[str, ...] = (
+        "[data-e2e='comment-icon']",
+        "[data-e2e='browse-comment-icon']",
+    )
     comment_editor: tuple[str, ...] = (
         "div[contenteditable='true'][data-e2e='comment-input']",
-        "div[data-e2e='comment-input'] div[contenteditable='true']",
+        "[data-e2e='comment-input'] div[contenteditable='true']",
         "div[contenteditable='true']",
     )
-    comment_submit: tuple[str, ...] = ("div[data-e2e='comment-post']", "button:has-text('Đăng')")
-    share_open: tuple[str, ...] = ("[data-e2e='share-icon']",)
-    repost: tuple[str, ...] = ("text=Repost", "text=Đăng lại")
-    reposted: tuple[str, ...] = ("text=Reposted", "text=Đã đăng lại", "text=Remove repost")
+    comment_submit: tuple[str, ...] = ("[data-e2e='comment-post']", "button:has-text('Đăng')")
+    share_open: tuple[str, ...] = ("[data-e2e='share-icon']", "[data-e2e='browse-share-icon']")
+    repost: tuple[str, ...] = ("text=Đăng lại", "text=Repost")
+    reposted: tuple[str, ...] = ("text=Đã đăng lại", "text=Reposted", "text=Remove repost")
 
 
 RECIPE = Recipe()
@@ -117,7 +133,7 @@ async def run(
                 needed = recipe.share_open + recipe.like + recipe.reposted
             else:
                 needed = recipe.like + recipe.liked
-            if await actions.wait_visible(page, needed, GOTO_TIMEOUT_MS) is None:
+            if await _wait_with_nudge(page, needed, GOTO_TIMEOUT_MS, rng, sleep) is None:
                 if blocked := await detect(page, Platform.TIKTOK):
                     return InteractResult(False, blocked.evidence, checkpoint=blocked)
                 return InteractResult(
@@ -148,6 +164,27 @@ async def run(
     except Exception as exc:
         log.warning("tiktok_browser.failed", job=str(job.id), error=f"{type(exc).__name__}: {exc}")
         return InteractResult(False, f"{type(exc).__name__}: {exc}", retryable=True)
+
+
+async def _wait_with_nudge(page, selectors, timeout_ms: int, rng, sleep):
+    """Cho nut hien, moi ~15 giay lai di chuot / cuon nhe: do that, thanh hanh dong cua
+    TikTok chi render sau khi trang thay co tuong tac."""
+    import time
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+        found = await actions.first_visible(page, selectors, timeout_ms=3_000)
+        if found is not None:
+            return found
+        try:
+            await page.mouse.move(rng.randint(500, 800), rng.randint(300, 500))
+            await page.mouse.wheel(0, rng.randint(80, 160))
+            await sleep(rng.uniform(0.6, 1.4))
+            await page.mouse.wheel(0, -rng.randint(80, 160))
+        except Exception:
+            pass
+        await sleep(rng.uniform(8, 14))
+    return None
 
 
 async def _like(page, r: Recipe, rng, sleep) -> InteractResult:
