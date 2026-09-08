@@ -240,7 +240,7 @@ export type SlotMeta = { timezone: string; weekdays: string[] };
 
 export type TimelineItem = {
   at: string;
-  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity" | "delete" | "edit";
+  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity" | "delete" | "edit" | "reply" | "dm";
   status: JobStatus | null;
   title: string;
   detail: string | null;
@@ -275,6 +275,14 @@ export type Settings = {
   x_enabled: boolean;
   reddit_enabled: boolean;
   facebook_enabled: boolean;
+  chatbot_enabled: boolean;
+  chatbot_comments: boolean;
+  chatbot_dms: boolean;
+  chatbot_model: string;
+  chatbot_llm_configured: boolean;
+  chatbot_max_per_hour: number;
+  chatbot_interval_minutes: number;
+  chatbot_last: { at: string; handle: string; replier: string; replied: number; dm_replied: number; stopped: string | null } | null;
 };
 
 export type Post = {
@@ -313,6 +321,8 @@ export type ActivitySummary = {
   likes: KindCount;
   follows: KindCount;
   comments: KindCount;
+  replies: KindCount;
+  dms: KindCount;
   accounts_warming: number;
 };
 

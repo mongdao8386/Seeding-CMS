@@ -300,6 +300,7 @@ class SlotMeta(BaseModel):
 class TimelineItem(BaseModel):
     at: datetime
     # post | like | follow | comment | repost | browse | session | identity | delete | edit
+    # | reply | dm
     kind: str
     status: JobStatus | None
     title: str
@@ -318,6 +319,9 @@ class ActivitySummary(BaseModel):
     likes: KindCount
     follows: KindCount
     comments: KindCount
+    # Chatbot: tra loi binh luan duoi bai cua minh, tra loi tin nhan.
+    replies: KindCount
+    dms: KindCount
     accounts_warming: int
 
 
@@ -417,3 +421,11 @@ class SettingsOut(BaseModel):
     x_enabled: bool
     reddit_enabled: bool
     facebook_enabled: bool
+    chatbot_enabled: bool
+    chatbot_comments: bool
+    chatbot_dms: bool
+    chatbot_model: str
+    chatbot_llm_configured: bool
+    chatbot_max_per_hour: int
+    chatbot_interval_minutes: int
+    chatbot_last: dict | None = None

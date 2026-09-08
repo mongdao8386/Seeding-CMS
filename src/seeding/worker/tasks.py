@@ -427,3 +427,105 @@ async def _library_broken(platform, detail: str) -> None:
             f"sẽ hỏng cho tới khi cập nhật (pip install -U twifork). {detail[:200]}"
         )
         await flags.set_flag(gate, {"at": datetime.now(UTC).isoformat()}, ttl_seconds=12 * 3600)
+
+
+# ------------------------------------------------------------- chatbot (phan 10)
+
+
+async def chatbot_tick(ctx: dict) -> int:
+    """Moi tai khoan dang chay tren nen tang co kenh chatbot -> mot job run_chatbot.
+    _job_id theo phut de hai tick khong xep trung."""
+    from seeding.domain.models import Account, AccountStatus
+
+    settings = get_settings()
+    if not settings.chatbot_enabled:
+        return 0
+    channels = adapters.chatbots()
+    if not channels:
+        return 0
+    stamp = datetime.now(UTC).strftime("%Y%m%d%H%M")
+    enqueued = 0
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                select(Account.id).where(
+                    Account.platform.in_(list(channels)),
+                    Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
+                )
+            )
+        ).scalars()
+        for account_id in list(rows):
+            await ctx["redis"].enqueue_job(
+                "run_chatbot", str(account_id), _job_id=f"chatbot:{account_id}:{stamp}"
+            )
+            enqueued += 1
+    if enqueued:
+        log.info("chatbot_tick.enqueued", count=enqueued)
+    return enqueued
+
+
+async def run_chatbot(ctx: dict, account_id: str) -> str:
+    from sqlalchemy.orm import selectinload
+
+    from seeding.content import chatbot as writer
+    from seeding.domain.models import Account
+    from seeding.platforms import chatbot as engine
+    from seeding.platforms import outreach
+
+    settings = get_settings()
+    async with SessionLocal() as session:
+        account = await session.get(
+            Account, uuid.UUID(account_id), options=[selectinload(Account.persona)]
+        )
+        if account is None:
+            return "missing"
+        profile = await profiles_mod.get_for_account(session, account.id)
+        verdict = readiness.check(account, profile)
+        if not verdict.ready:
+            return "not_ready"
+        await outreach.ensure_proxy_loaded(session, profile)
+        factory = adapters.get_chatbot(account.platform)
+        if factory is None:
+            return "no_channel"
+        replier = writer.build_replier(
+            api_key=settings.anthropic_api_key, model=settings.chatbot_model
+        )
+        limits = engine.Limits(
+            max_per_hour=settings.chatbot_max_per_hour,
+            reply_ratio=settings.chatbot_reply_ratio,
+            lookback_hours=settings.chatbot_lookback_hours,
+        )
+        report = await engine.run_for_account(
+            session,
+            account,
+            profile,
+            channel_factory=factory,
+            replier=replier,
+            limits=limits,
+            do_comments=settings.chatbot_comments,
+            do_dms=settings.chatbot_dms,
+        )
+        await flags.set_flag(
+            "chatbot:last",
+            {
+                "at": datetime.now(UTC).isoformat(),
+                "handle": account.handle,
+                "replier": replier.name,
+                "replied": report.replied,
+                "dm_replied": report.dm_replied,
+                "stopped": report.stopped,
+            },
+        )
+        log.info(
+            "chatbot.done",
+            handle=account.handle,
+            replier=replier.name,
+            comments_seen=report.comments_seen,
+            replied=report.replied,
+            dms_seen=report.dms_seen,
+            dm_replied=report.dm_replied,
+            skipped=report.skipped,
+            failed=report.failed,
+            stopped=report.stopped,
+        )
+        return "ok"

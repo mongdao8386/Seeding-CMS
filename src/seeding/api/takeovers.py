@@ -13,7 +13,7 @@ from seeding.api.schemas import ResolveIn, SettingsOut, TakeoverOut
 from seeding.config import get_settings
 from seeding.domain import vault
 from seeding.domain.models import Account, Profile, TakeoverRequest, TakeoverStatus
-from seeding.ops import alerts, takeover
+from seeding.ops import alerts, flags, takeover
 
 router = APIRouter(tags=["takeovers"])
 
@@ -110,6 +110,14 @@ async def settings_out() -> SettingsOut:
         x_enabled=st.x_enabled,
         reddit_enabled=st.reddit_enabled,
         facebook_enabled=st.facebook_enabled,
+        chatbot_enabled=st.chatbot_enabled,
+        chatbot_comments=st.chatbot_comments,
+        chatbot_dms=st.chatbot_dms,
+        chatbot_model=st.chatbot_model,
+        chatbot_llm_configured=bool(st.anthropic_api_key),
+        chatbot_max_per_hour=st.chatbot_max_per_hour,
+        chatbot_interval_minutes=st.chatbot_interval_minutes,
+        chatbot_last=await flags.get_flag("chatbot:last"),
     )
 
 

@@ -81,6 +81,19 @@ class Settings(BaseSettings):
     # A/B test, nhung la duong duy nhat cho trang ca nhan. Khong co nuoi tu dong.
     facebook_enabled: bool = True
 
+    # Chatbot: tu tra loi binh luan duoi bai cua tai khoan va tin nhan. TAT mac dinh -
+    # no gui noi dung that ra ngoai; bat khi da xem thu cau tra loi.
+    chatbot_enabled: bool = False
+    chatbot_comments: bool = True
+    chatbot_dms: bool = True
+    chatbot_interval_minutes: int = 10
+    chatbot_max_per_hour: int = 8
+    chatbot_reply_ratio: float = 0.8
+    chatbot_lookback_hours: int = 48
+    # Viet cau tra loi bang Claude khi co ANTHROPIC_API_KEY; khong co thi dung cau mau.
+    chatbot_model: str = "claude-sonnet-5"
+    anthropic_api_key: str = ""
+
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic
     alert_kind: str = "generic"

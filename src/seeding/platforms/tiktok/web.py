@@ -299,6 +299,34 @@ class TikTokWeb:
             "followers": int((info.get("stats") or {}).get("followerCount") or 0),
         }
 
+    async def posts(self, sec_uid: str, count: int = 10) -> list[FeedItem]:
+        """Video cua mot nguoi (dung cho chinh minh: chatbot doc bai cua tai khoan)."""
+        body = await self._get(
+            "/api/post/item_list/", {"secUid": sec_uid, "count": str(count), "cursor": "0"}
+        )
+        return parse_feed(body)
+
+    async def comments(self, item_id: str, count: int = 20) -> dict:
+        """Binh luan duoi mot video, body tho: {"comments": [{cid, text, user, create_time,
+        reply_comment}], ...}."""
+        return await self._get(
+            "/api/comment/list/", {"aweme_id": item_id, "count": str(count), "cursor": "0"}
+        )
+
+    async def reply(self, item_id: str, comment_id: str, text: str) -> ActionResult:
+        """Tra loi mot binh luan. KHONG idempotent."""
+        return await self._post(
+            "/api/comment/publish/",
+            {
+                "aweme_id": item_id,
+                "text": text,
+                "text_extra": "[]",
+                "reply_id": comment_id,
+                "reply_to_reply_id": "0",
+            },
+            idempotent=False,
+        )
+
     # ------------------------------------------------------------- hanh dong
 
     async def like(self, item_id: str) -> ActionResult:

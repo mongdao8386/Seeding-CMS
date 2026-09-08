@@ -51,6 +51,8 @@ _KIND_LABEL = {
     ActivityKind.IDENTITY: "identity",
     ActivityKind.DELETE: "delete",
     ActivityKind.EDIT: "edit",
+    ActivityKind.REPLY: "reply",
+    ActivityKind.DM: "dm",
 }
 
 
@@ -148,6 +150,8 @@ def _timeline_url(a: ActivityJob) -> str | None:
     if a.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
         plan = manage.decode(a.target_url)
         return plan.remote_url if plan and plan.remote_url else None
+    if a.kind is ActivityKind.DM:
+        return (a.target_url or "").split("#")[0] or None
     return a.target_url
 
 
@@ -156,6 +160,10 @@ def _target_label(a: ActivityJob) -> str:
         return "Đổi danh tính: " + identity.describe(identity.plan_from_target(a.target_url))
     if a.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
         return manage.describe(manage.decode(a.target_url))
+    if a.kind is ActivityKind.REPLY:
+        return "Trả lời bình luận"
+    if a.kind is ActivityKind.DM:
+        return "Nhắn tin"
     url = a.target_url or ""
     handle = url.split("/@")[1].split("/")[0] if "/@" in url else ""
     verb = {
@@ -207,5 +215,7 @@ async def summary(
         likes=bucket({ActivityKind.ENGAGE, ActivityKind.REACT}),
         follows=bucket({ActivityKind.FOLLOW}),
         comments=bucket({ActivityKind.COMMENT}),
+        replies=bucket({ActivityKind.REPLY}),
+        dms=bucket({ActivityKind.DM}),
         accounts_warming=warming,
     )

@@ -71,6 +71,11 @@ export default function Overview() {
                 <div className="text-xs">
                   hôm nay: {w.likes.done}/{w.likes.planned} thả tim · {w.follows.done}/{w.follows.planned} follow ·{" "}
                   {w.comments.done}/{w.comments.planned} bình luận
+                  {w.replies.done + w.dms.done > 0 && (
+                    <>
+                      {" "}· chatbot {w.replies.done} trả lời · {w.dms.done} tin nhắn
+                    </>
+                  )}
                 </div>
               )}
             </div>

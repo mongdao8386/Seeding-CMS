@@ -139,6 +139,10 @@ class ActivityKind(enum.StrEnum):
     # hoach trong target_url dang "manage:{json}" (platforms/manage.py).
     DELETE = "delete"
     EDIT = "edit"
+    # Chatbot: tra loi binh luan duoi bai cua minh / tra loi tin nhan. target_url la
+    # khoa chong tra loi hai lan (url binh luan, hoac url cuoc#id tin cuoi).
+    REPLY = "reply"
+    DM = "dm"
     # Binh luan vao mot video cu the cua nguoi la. Khac ENGAGE (tha tim) o cho no de
     # lai CHU - khong idempotent, khong duoc tu thu lai khi khong ro ket qua.
     COMMENT = "comment"

@@ -200,6 +200,35 @@ job báo rõ "Could not find … update the recipe" chứ không đổ lên tài
 
 Tắt bằng `REDDIT_ENABLED=false`, `FACEBOOK_ENABLED=false`.
 
+## 3i. Chatbot: tự trả lời bình luận và tin nhắn (phần 10)
+
+**Tắt mặc định** — nó gửi chữ thật ra ngoài. Bật bằng `CHATBOT_ENABLED=true` trong `.env`.
+
+Mỗi 10 phút (`CHATBOT_INTERVAL_MINUTES`), worker mở từng tài khoản đang chạy, đọc bình
+luận dưới **bài của chính acc** (TikTok, Instagram, X, Reddit) và hộp thư chưa đọc
+(Instagram, X — TikTok và Reddit không làm được tin nhắn), rồi trả lời. Kết quả hiện trên
+dòng thời gian của tài khoản ("Trả lời bình luận", "Nhắn tin"), Tổng quan đếm theo ngày,
+Cài đặt có thẻ Chatbot với lần chạy gần nhất.
+
+Câu trả lời viết bằng:
+
+- **Claude** (Anthropic API) khi có `ANTHROPIC_API_KEY` — theo giọng và chủ đề của persona
+  (Tài khoản → persona: tên, giọng, chủ đề). Model mặc định `claude-sonnet-5`, đổi bằng
+  `CHATBOT_MODEL`. Rẻ: mỗi câu ~100 token.
+- **Bộ câu mẫu** tiếng Việt khi không có key — chạy được nhưng nhìn "máy" hơn.
+
+Luật, áp cho cả hai: ngắn (1–2 câu), tiếng Việt đời thường, không link, không hashtag,
+**không bao giờ tự nhận là bot**; spam / quảng cáo / thù ghét thì **im**. Tối đa
+`CHATBOT_MAX_PER_HOUR` (8) câu mỗi giờ mỗi tài khoản, chỉ trả lời `CHATBOT_REPLY_RATIO`
+(80%) bình luận, bỏ qua bình luận cũ hơn `CHATBOT_LOOKBACK_HOURS` (48), nghỉ 3–10 giây
+giữa hai câu, không trả lời chính mình, không trả lời cuộc mà tin cuối là của mình, và
+**không bao giờ trả lời hai lần** cùng một bình luận / tin nhắn (khoá theo URL, giữ 30 ngày).
+
+Gặp checkpoint / phiên chết giữa chừng → tài khoản vào **Cần bạn**, chatbot dừng acc đó.
+Key Claude sai hay hết quota → dừng lượt đó, ghi ở thẻ Chatbot, không đổ lên tài khoản.
+
+Tắt riêng: `CHATBOT_COMMENTS=false` (bình luận), `CHATBOT_DMS=false` (tin nhắn).
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua

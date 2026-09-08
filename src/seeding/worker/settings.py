@@ -16,10 +16,12 @@ from arq.connections import RedisSettings
 from seeding.config import get_settings
 from seeding.worker.tasks import (
     activity_tick,
+    chatbot_tick,
     health_sweep,
     plan_activity,
     prune_media,
     run_activity_job,
+    run_chatbot,
     run_post_job,
     tick,
 )
@@ -55,7 +57,7 @@ async def heartbeat(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_post_job, run_activity_job]
+    functions = [run_post_job, run_activity_job, run_chatbot]
     cron_jobs = [
         cron(tick, second={0, 30}, run_at_startup=True),
         # Nuoi: quet moi phut; lap lich moi sang som va luc khoi dong (ngay da co thi bo qua).
@@ -64,6 +66,12 @@ class WorkerSettings:
         cron(prune_media, hour={4}, minute={30}),
         # Kiem phien moi tieng; moi lan chi 10 profile qua han nhat.
         cron(health_sweep, minute={7}),
+        # Chatbot: moi N phut (CHATBOT_INTERVAL_MINUTES), tat thi tick tra ve 0 ngay.
+        cron(
+            chatbot_tick,
+            minute=set(range(0, 60, max(1, get_settings().chatbot_interval_minutes))),
+            second={40},
+        ),
         cron(heartbeat, minute=set(range(0, 60, 5)), run_at_startup=True),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

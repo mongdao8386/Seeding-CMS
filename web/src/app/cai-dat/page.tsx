@@ -110,6 +110,31 @@ export default function SettingsPage() {
           </div>
           {alertNote && <p className="text-xs text-muted">{alertNote}</p>}
         </section>
+
+        <section className="card flex flex-col gap-3 p-5 md:col-span-2">
+          <div className="text-[15px] font-semibold">Chatbot</div>
+          <div className="text-[13px] text-muted">
+            Tự trả lời bình luận dưới bài của acc và tin nhắn. Đọc từ <span className="mono">.env</span> — tắt mặc định, bật bằng <span className="mono">CHATBOT_ENABLED=true</span>.
+          </div>
+          {settings.data && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Row ok={settings.data.chatbot_enabled} text={settings.data.chatbot_enabled ? `Đang bật · quét mỗi ${settings.data.chatbot_interval_minutes} phút` : "Đang tắt"} />
+              <Row ok={settings.data.chatbot_llm_configured} text={settings.data.chatbot_llm_configured ? `Viết bằng Claude (${settings.data.chatbot_model})` : "Chưa có ANTHROPIC_API_KEY — dùng câu mẫu"} />
+              <Row ok={settings.data.chatbot_comments} text={settings.data.chatbot_comments ? "Trả lời bình luận: TikTok, Instagram, X, Reddit" : "Trả lời bình luận: tắt"} />
+              <Row ok={settings.data.chatbot_dms} text={settings.data.chatbot_dms ? "Trả lời tin nhắn: Instagram, X" : "Trả lời tin nhắn: tắt"} />
+              <div className="text-sm text-muted sm:col-span-2">
+                Tối đa {settings.data.chatbot_max_per_hour} câu / giờ / tài khoản; không bao giờ tự nhận là bot; spam và quảng cáo thì im.
+                {settings.data.chatbot_last && (
+                  <>
+                    {" "}Lần chạy gần nhất: <span className="mono">{settings.data.chatbot_last.handle}</span> ·{" "}
+                    {settings.data.chatbot_last.replied} bình luận · {settings.data.chatbot_last.dm_replied} tin nhắn
+                    {settings.data.chatbot_last.stopped ? ` · dừng: ${settings.data.chatbot_last.stopped}` : ""}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </>
   );

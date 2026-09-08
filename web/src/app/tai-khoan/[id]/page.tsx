@@ -155,6 +155,8 @@ const KIND_VI: Record<TimelineItem["kind"], string> = {
   identity: "Danh tính",
   delete: "Xoá bài",
   edit: "Sửa bài",
+  reply: "Trả lời bình luận",
+  dm: "Nhắn tin",
 };
 
 function statusVi(s: TimelineItem["status"]): { text: string; cls: string } {
@@ -202,6 +204,8 @@ function Timeline({ items, loading }: { items: TimelineItem[]; loading: boolean 
                   <span className="text-muted"> “{it.title}”</span>
                 ) : it.kind === "identity" ? (
                   <span className="text-muted"> {it.title.replace(/^Đổi danh tính: /, "")}</span>
+                ) : it.kind === "reply" || it.kind === "dm" ? (
+                  <span className="text-muted"> {it.detail ?? ""}</span>
                 ) : it.kind === "delete" || it.kind === "edit" ? (
                   <span className="text-muted"> {it.detail && it.status === "succeeded" ? it.detail : ""}</span>
                 ) : (

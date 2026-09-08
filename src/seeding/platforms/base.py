@@ -74,6 +74,8 @@ HealthCheck = Callable[[Profile], Awaitable[tuple[bool, str]]]
 _REGISTRY: dict[Platform, Adapter] = {}
 _IDENTITY: dict[Platform, InteractRunner] = {}
 _MANAGE: dict[Platform, InteractRunner] = {}
+# (profile, account) -> Channel (mo bang `async with`)
+_CHATBOT: dict[Platform, Callable[..., object]] = {}
 _INTERACT: dict[Platform, InteractRunner] = {}
 _WARM: dict[Platform, WarmPlanner] = {}
 _HEALTH: dict[Platform, HealthCheck] = {}
@@ -115,6 +117,19 @@ def get_manage(platform: Platform) -> InteractRunner | None:
     return _MANAGE.get(platform)
 
 
+def register_chatbot(platform: Platform, factory: Callable[..., object]) -> None:
+    """Kenh chatbot: doc binh luan / hop thu cua chinh tai khoan va tra loi."""
+    _CHATBOT[platform] = factory
+
+
+def get_chatbot(platform: Platform) -> Callable[..., object] | None:
+    return _CHATBOT.get(platform)
+
+
+def chatbots() -> dict[Platform, Callable[..., object]]:
+    return dict(_CHATBOT)
+
+
 def register_warm(platform: Platform, planner: WarmPlanner) -> None:
     _WARM[platform] = planner
 
@@ -153,6 +168,10 @@ _MODULES = (
     "seeding.platforms.reddit.manage",
     "seeding.platforms.facebook.publish",
     "seeding.platforms.facebook.interact",
+    "seeding.platforms.tiktok.chatbot",
+    "seeding.platforms.instagram.chatbot",
+    "seeding.platforms.x.chatbot",
+    "seeding.platforms.reddit.chatbot",
 )
 
 
