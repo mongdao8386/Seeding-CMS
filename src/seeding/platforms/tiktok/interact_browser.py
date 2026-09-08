@@ -38,6 +38,10 @@ log = structlog.get_logger(__name__)
 # 222s, va co lan qua 300s; lan tha tim len duoc mat 211s tong. 8 phut la con so do duoc,
 # khong phai du phong. Worker: job_timeout phai lon hon con so nay.
 GOTO_TIMEOUT_MS = 480_000
+# Sau khi bam, trang gui request like/follow QUA PROXY roi moi doi trang thai nut. Qua
+# proxy dan cu cham, 1-3 giay la khong du (17:23 08/09/2026: bam xong, nhin mot lan, chua
+# thay "da thich", job bao 'MAY have worked'). Cho toi 20 giay, thay ngay thi tra ngay.
+CONFIRM_MS = 20_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +200,7 @@ async def _like(page, r: Recipe, rng, sleep) -> InteractResult:
         return InteractResult(False, actions.selector_miss("the like button", r.like))
     await button.click()
     await humanize.dwell(low=1.0, high=3.0, rng=rng, sleep=sleep)
-    if await actions.present(page, r.liked):
+    if await actions.wait_visible(page, r.liked, timeout_ms=CONFIRM_MS):
         return InteractResult(True, "liked")
     return InteractResult(
         False,
