@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from seeding.models import Platform
+from seeding.domain.models import Platform
 
 
 class CheckpointKind(StrEnum):

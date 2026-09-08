@@ -17,7 +17,7 @@ import structlog
 from camoufox.async_api import AsyncCamoufox
 
 from seeding.config import get_settings
-from seeding.models import Platform, Profile
+from seeding.domain.models import Platform, Profile
 
 log = structlog.get_logger(__name__)
 

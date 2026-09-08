@@ -11,7 +11,7 @@ chuyen hoan toan khong lien quan.
 
 import pytest
 
-from seeding.core import proxylist
+from seeding.ops import proxylist
 
 
 def one(text: str):

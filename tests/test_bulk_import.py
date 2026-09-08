@@ -5,8 +5,8 @@ sai dinh dang thi 172 dong truoc do da nam trong database, va nguoi dung khong b
 phai sua tu dau. `parse` phai bat het moi loi trong mot lan doc, khong dung o loi dau.
 """
 
-from seeding.core import bulk
-from seeding.models import Platform
+from seeding.domain.models import Platform
+from seeding.ops import bulk
 
 GOOD = """platform,handle,persona,daily_cap,start_warmup,password
 reddit,seed_01,Hanoi students,3,yes,hunter2

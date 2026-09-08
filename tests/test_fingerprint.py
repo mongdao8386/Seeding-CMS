@@ -1,6 +1,6 @@
 import json
 
-from seeding.core import fingerprint as fpm
+from seeding.domain import fingerprint as fpm
 
 
 def test_generate_produces_a_camoufox_config():

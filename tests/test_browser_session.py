@@ -11,8 +11,8 @@ ca he thong nay sinh ra de tranh.
 import pytest
 
 from seeding.browser.session import open_profile
-from seeding.core import fingerprint as fpm
-from seeding.models import Profile
+from seeding.domain import fingerprint as fpm
+from seeding.domain.models import Profile
 
 pytestmark = pytest.mark.browser
 

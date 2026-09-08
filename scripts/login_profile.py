@@ -24,11 +24,11 @@ import sys
 from sqlalchemy import select
 
 from seeding.browser.session import PROBES, open_profile
-from seeding.core import cookies as cookies_mod
-from seeding.core import profiles as profiles_mod
-from seeding.core import vault
 from seeding.db import SessionLocal, engine
-from seeding.models import Account, Platform, SessionEventKind
+from seeding.domain import profiles as profiles_mod
+from seeding.domain import vault
+from seeding.domain.models import Account, Platform, SessionEventKind
+from seeding.ops import cookies as cookies_mod
 
 
 async def main(platform_name: str, handle: str) -> int:

@@ -1,0 +1,153 @@
+"""Hinh dang du lieu di qua API. Chi nhung gi giao dien moi dung."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+from seeding.domain.models import AccountStatus, Platform, ProxyKind, ProxyStatus
+
+
+class Page[T](BaseModel):
+    """Mot trang ket qua. `total` la so ban ghi KHOP DIEU KIEN LOC, khong phai trong trang."""
+
+    items: list[T]
+    total: int
+    limit: int
+    offset: int
+
+
+class DeleteOut(BaseModel):
+    deleted: bool
+    detail: str
+
+
+# ------------------------------------------------------------------ tai khoan
+
+
+class AccountRow(BaseModel):
+    """Mot dong o man hinh Tai khoan. Du de tra loi 'acc nay con song khong' ma
+    khong phai bam vao."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    platform: Platform
+    handle: str
+    status: AccountStatus
+    daily_cap: int
+    warmup_started_at: datetime | None
+    last_posted_at: datetime | None
+    # Tu profile, neu co.
+    proxy_label: str | None = None
+    session_alive: bool | None = None  # None = chua bao gio dang nhap
+    # Tu domain/readiness.py.
+    ready: bool = True
+    blocked_reason: str | None = None
+    # Ngay thu may cua warm-up (1-based); None neu chua bat dau.
+    warm_day: int | None = None
+
+
+class AccountDetail(AccountRow):
+    """Them phan 'danh tinh' cho man hinh chi tiet."""
+
+    proxy_host: str | None = None
+    proxy_exit_ip: str | None = None
+    cookie_count: int = 0
+    session_cookie: bool = False
+    user_agent: str | None = None
+    timezone: str | None = None
+    last_login_at: datetime | None = None
+    last_health_at: datetime | None = None
+    profile_id: uuid.UUID | None = None
+
+
+class AccountPatch(BaseModel):
+    status: AccountStatus | None = None
+    daily_cap: int | None = None
+
+
+class ImportResult(BaseModel):
+    created: int
+    handles: list[str]
+    profiles_with_session: int
+    skipped: int
+    warnings: list[str]
+    problems: list[dict]
+
+
+# --------------------------------------------------------------------- proxy
+
+
+class ProxyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    label: str
+    kind: ProxyKind
+    scheme: str
+    host: str
+    port: int
+    region: str | None
+    status: ProxyStatus
+    last_exit_ip: str | None
+    last_error: str | None
+    username: str | None
+    # Gan cho acc nao roi, neu co.
+    bound_handle: str | None = None
+
+
+class ProxyTestOut(BaseModel):
+    ok: bool
+    exit_ip: str | None
+    latency_ms: int | None
+    error: str | None
+
+
+class ProxyImportOut(BaseModel):
+    created: int
+    labels: list[str]
+    tested: int
+    passed: int
+    duplicate_exit_ips: list[str]
+    results: list[dict]
+    skipped: list[dict]
+    problems: list[dict]
+
+
+# ------------------------------------------------------------------- profile
+
+
+class OpenProfileIn(BaseModel):
+    url: str | None = None
+
+
+class OpenProfileOut(BaseModel):
+    profile_id: uuid.UUID
+    handle: str
+    pid: int
+    url: str | None
+    detail: str
+
+
+# -------------------------------------------------------------------- he thong
+
+
+class StatsOut(BaseModel):
+    accounts: int
+    ready: int
+    blocked: int
+    dead: int
+    needs_human: int
+    warming: int
+    proxies: int
+    proxies_free: int
+
+
+class SystemOut(BaseModel):
+    api: bool
+    database: bool
+    signer: bool
+    signer_detail: str | None

@@ -17,7 +17,7 @@ from httpx import ASGITransport
 from seeding.api.main import app
 from seeding.config import get_settings
 
-PAGED = ("/accounts", "/profiles", "/proxies", "/campaigns", "/content")
+PAGED = ("/accounts", "/proxies")
 
 
 @pytest.fixture(scope="module")
@@ -156,30 +156,3 @@ async def test_search_that_matches_nothing_says_zero_rather_than_everything(clie
 
 async def test_an_unknown_platform_is_refused_instead_of_ignored(client):
     assert (await client.get("/accounts?platform=myspace")).status_code == 422
-
-
-# --------------------------------------------------- hang doi thi khong cat
-
-
-async def test_accounts_without_a_profile_is_a_full_list_not_a_page(client):
-    """Day la hang doi viec phai lam. Mot hang doi chi hien trang dau thi khong con la
-    hang doi - va nhung tai khoan o trang hai se khong bao gio duoc tao profile."""
-    body = (await client.get("/accounts/without-profile")).json()
-    assert isinstance(body, list)
-
-
-async def test_reddit_accounts_never_appear_in_the_no_profile_queue(client):
-    """Reddit di bang API, khong can profile. Dua no vao hang doi la tao viec khong
-    ton tai, va no se nam do mai vi khong ai lam duoc gi."""
-    body = (await client.get("/accounts/without-profile")).json()
-    assert all(a["platform"] != "reddit" for a in body)
-
-
-async def test_dead_accounts_are_not_asked_to_get_a_profile(client):
-    body = (await client.get("/accounts/without-profile")).json()
-    assert all(a["status"] != "dead" for a in body)
-
-
-async def test_profiles_can_be_filtered_to_the_ones_never_signed_into(client):
-    body = (await client.get("/profiles?logged_in=false&limit=500")).json()
-    assert all(p["last_login_at"] is None for p in body["items"])

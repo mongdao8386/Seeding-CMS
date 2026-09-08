@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 from seeding.config import get_settings
-from seeding.models import Base
+from seeding.domain.models import Base
 
 config = context.config
 target_metadata = Base.metadata

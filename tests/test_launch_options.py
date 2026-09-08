@@ -8,7 +8,7 @@ Moi thu van chay, chi la chay bang IP nha ban.
 """
 
 from seeding.browser.session import launch_options
-from seeding.models import Profile, Proxy
+from seeding.domain.models import Profile, Proxy
 
 
 def _profile(**kw) -> Profile:
@@ -94,7 +94,7 @@ def test_every_platform_has_a_session_probe():
     TikTok tung thieu dung nhu vay.
     """
     from seeding.browser.session import PROBES
-    from seeding.models import Platform
+    from seeding.domain.models import Platform
 
     assert sorted(p.value for p in Platform if p not in PROBES) == []
 
@@ -103,7 +103,7 @@ def test_tiktok_checks_a_light_endpoint_not_the_home_page():
     """Do that tren proxy dan cu Viet Nam: trang chu TikTok ~400KB, mat 23 GIAY hoac
     timeout han. Endpoint nay tra loi trong ~1 giay."""
     from seeding.browser.session import PROBES
-    from seeding.models import Platform
+    from seeding.domain.models import Platform
 
     probe = PROBES[Platform.TIKTOK]
     assert probe.info_url

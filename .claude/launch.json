@@ -2,15 +2,38 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "seeding.api.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
+    },
+    {
       "name": "dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "web"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "web"
+      ],
       "port": 3000
     },
     {
       "name": "signer",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "tools/tiktok-signer", "start"],
+      "runtimeArgs": [
+        "--prefix",
+        "tools/tiktok-signer",
+        "start"
+      ],
       "port": 8080
     }
   ]

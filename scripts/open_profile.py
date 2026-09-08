@@ -17,10 +17,10 @@ import sys
 import uuid
 
 from seeding.browser.session import PROBES, open_profile
-from seeding.core import profiles as profiles_mod
-from seeding.core import readiness
 from seeding.db import SessionLocal, engine
-from seeding.models import Account, Profile
+from seeding.domain import profiles as profiles_mod
+from seeding.domain import readiness
+from seeding.domain.models import Account, Profile
 
 # Luu cookie moi tung nay giay. Trinh duyet mo lau ma sap nguon hay treo may thi van
 # con lai phan lon tien do.

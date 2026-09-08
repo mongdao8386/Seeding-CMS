@@ -10,8 +10,8 @@ khong chi giao dien.
 
 import uuid
 
-from seeding.core.readiness import check
-from seeding.models import Account, AccountStatus, Platform, Profile
+from seeding.domain.models import Account, AccountStatus, Platform, Profile
+from seeding.domain.readiness import check
 
 
 def _account(**kw) -> Account:

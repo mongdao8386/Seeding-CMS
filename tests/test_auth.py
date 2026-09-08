@@ -63,22 +63,14 @@ async def test_the_scheme_matters_not_just_the_value(client, token):
     "method,path",
     [
         ("get", "/accounts"),
-        ("get", "/profiles"),
         ("get", "/proxies"),
-        ("get", "/takeovers"),
-        ("get", "/campaigns"),
-        ("get", "/content"),
-        ("post", "/activity/plan"),
-        ("post", "/content/preview"),
+        ("get", "/stats"),
+        ("get", "/system"),
+        ("post", "/accounts/import/check"),
+        ("post", "/proxies/import"),
     ],
 )
 async def test_every_sensitive_route_is_behind_the_token(client, method, path):
     """Quet ca danh sach thay vi tin rang khong co route nao bi bo sot."""
     r = await getattr(client, method)(path)
     assert r.status_code == 401, f"{method.upper()} {path} khong duoc bao ve"
-
-
-async def test_the_2fa_route_is_behind_the_token(client):
-    """Route nay sinh ra ma dang nhap that - bo sot no la nghiem trong nhat."""
-    fake = "00000000-0000-0000-0000-000000000000"
-    assert (await client.get(f"/takeovers/{fake}/totp")).status_code == 401

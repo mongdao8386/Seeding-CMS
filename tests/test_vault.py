@@ -1,7 +1,7 @@
 import pytest
 
-from seeding.core import vault
-from seeding.models import Account, Platform, Proxy
+from seeding.domain import vault
+from seeding.domain.models import Account, Platform, Proxy
 
 
 def test_round_trip():

@@ -8,7 +8,7 @@ Sao luu khoa nay o cho khac voi ban sao luu DB. Mat khoa la mat toan bo cookie j
 tuc la mat het phien dang nhap, va khong co duong khoi phuc.
 """
 
-from seeding.core.vault import new_key
+from seeding.domain.vault import new_key
 
 if __name__ == "__main__":
     print(f"VAULT_KEY={new_key()}")

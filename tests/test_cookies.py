@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-from seeding.core import cookies
-from seeding.models import Platform
+from seeding.domain.models import Platform
+from seeding.ops import cookies
 
 FB = "c_user=100012345; xs=41%3AabcDEF==; fr=0aXyZ; datr=abc123"
 
