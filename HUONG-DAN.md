@@ -42,6 +42,13 @@ OK — **một acc một proxy, không dùng chung, không đổi**. Hết proxy
 Bấm vào một tài khoản → **Mở trình duyệt**: cửa sổ thật với đúng proxy, cookie, fingerprint
 của acc đó. Đăng nhập tay, giải captcha, xem gì cũng được; đóng cửa sổ là cookie được lưu.
 
+## 2d. Xoá tài khoản
+
+Trang một acc có nút **Xoá** (xoá cả profile, cookie, thông tin đăng nhập, lịch nuôi, lịch
+đăng). Danh sách Tài khoản có ô chọn từng dòng, **Xoá đã chọn** và **Xoá tất cả** (theo
+tổng hiện tại). Acc đã đăng bài được giữ lại và hỏi thêm một lần vì xoá là mất lịch sử
+đăng. Proxy không bị xoá theo; proxy đang gắn acc thì không xoá được cho tới khi acc mất.
+
 ## 2c. Đăng nhập lại một acc (phiên chết, captcha)
 
 Khi hàng chờ người báo "phiên chết" hay "captcha":
