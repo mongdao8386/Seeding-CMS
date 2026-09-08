@@ -7,6 +7,8 @@ Cho de sai nhat: proxy duoc gan trong database ma khong duoc truyen xuong trinh 
 Moi thu van chay, chi la chay bang IP nha ban.
 """
 
+import uuid
+
 from seeding.browser.session import launch_options
 from seeding.domain.models import Profile, Proxy
 
@@ -127,3 +129,21 @@ def test_probes_without_a_light_endpoint_still_have_the_old_path():
     for platform, probe in PROBES.items():
         assert probe.url, platform
         assert probe.logged_out_markers, platform
+
+
+def test_static_bypass_goes_into_the_proxy_block_only_when_configured(monkeypatch):
+    """Host tinh di thang chi khi co proxy VA co cau hinh; khong bao gio them khi khong proxy."""
+    from seeding.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "browser_static_bypass", "*.ttwstatic.com,*.tiktokcdn.com")
+    proxy = Proxy(host="proxy.example.com", port=8080, scheme="http")
+    p = Profile(id=uuid.uuid4(), proxy_id=uuid.uuid4(), fingerprint={}, os_family="windows")
+    p.proxy = proxy
+    opts = launch_options(p, headless=True, humanize=False)
+    assert opts["proxy"]["bypass"] == "*.ttwstatic.com,*.tiktokcdn.com"
+    monkeypatch.setattr(settings, "browser_static_bypass", "")
+    assert "bypass" not in launch_options(p, headless=True, humanize=False)["proxy"]
+    p.proxy = None
+    p.proxy_id = None
+    assert "proxy" not in launch_options(p, headless=True, humanize=False)

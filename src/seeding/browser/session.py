@@ -146,6 +146,10 @@ def launch_options(profile: Profile, *, headless: bool, humanize: bool) -> dict:
 
     if profile.proxy is not None:
         options["proxy"] = profile.proxy.as_playwright_proxy()
+        bypass = get_settings().browser_static_bypass.strip()
+        if bypass:
+            # Playwright: danh sach host cach nhau bang dau phay, ho tro *.
+            options["proxy"]["bypass"] = bypass
         # Chi suy dia ly tu IP khi that su co proxy.
         options["geoip"] = True
 

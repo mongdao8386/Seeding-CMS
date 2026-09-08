@@ -102,6 +102,12 @@ profile + proxy của acc: trang tự phát video, TikTok thật sự thấy 30�
 mới bấm. Chậm (mỗi trang 1,5–5 phút qua proxy dân cư) nhưng là đường duy nhất đã lên
 được. `TIKTOK_ACTIONS=http` để quay lại đường HTTP nếu TikTok mở cổng.
 
+**Proxy phải tải được web TikTok.** Đo 08/09/2026: proxy HA1 không bao giờ hiện trang video
+(53 file JS trên `ttwstatic.com` bị huỷ, trang trống 5 phút, cả khi mở cửa sổ); P03 hiện
+sau ~100 giây. Acc trên proxy nào không tải nổi trang thì job thả tim báo "page never
+rendered" và thử lại — đổi proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
+thẳng) đã thử: TikTok trả trang "Không thể mở trang", nên để trống.
+
 **Đăng lại (repost)**: 0–1 lần/ngày, chỉ từ ngày thứ 2 của warm-up, chỉ video đã thả
 tim, xem lại 30–45 giây, sau thả tim ít nhất 3 phút, và không trùng video đã bình luận.
 TikTok đi qua endpoint Repost của trang web (**chưa kiểm chứng trên acc thật**), X là
