@@ -122,6 +122,9 @@ class ProxyOut(BaseModel):
     username: str | None
     # Gan cho acc nao roi, neu co.
     bound_handle: str | None = None
+    # Web TikTok qua proxy nay: '3/5 · ~150s' tu cac job trinh duyet; None khi chua do.
+    tiktok_render: str | None = None
+    tiktok_last_ok: bool | None = None
 
 
 class ProxyTestOut(BaseModel):

@@ -294,6 +294,14 @@ function ProxyList({ proxies, onChange }: { proxies: Proxy[]; onChange: () => vo
             {p.status === "ok" ? "OK" : p.status === "failing" ? "hỏng" : "chưa thử"}
           </span>
           <span className="mono text-xs text-muted">{p.last_exit_ip ?? ""}</span>
+          {p.tiktok_render && (
+            <span
+              className={"text-xs " + (p.tiktok_last_ok ? "text-ok-text" : "text-warn-text")}
+              title="Web TikTok qua proxy này: số lần hiện trang / số lần mở, thời gian hiện trung bình (từ các job trình duyệt)"
+            >
+              TikTok {p.tiktok_render}
+            </span>
+          )}
           <span className="text-sm text-muted">{p.bound_handle ? `→ ${p.bound_handle}` : "rảnh"}</span>
           <span className="grow" />
           <button className="btn btn-ghost text-xs" disabled={busy === p.id} onClick={() => test(p)}>

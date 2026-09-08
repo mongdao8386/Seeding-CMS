@@ -37,6 +37,7 @@ from seeding.domain.models import (
     Platform,
     Profile,
 )
+from seeding.ops import proxy_stats
 from seeding.platforms.base import InteractResult, register_interact
 from seeding.platforms.outreach import direct_ok, ensure_proxy_loaded, watch_seconds
 from seeding.platforms.tiktok import sitting as sitting_mod
@@ -163,7 +164,10 @@ async def run(
                 needed = recipe.share_open + recipe.like + recipe.reposted
             else:
                 needed = recipe.like + recipe.liked
-            if await _wait_with_nudge(page, needed, GOTO_TIMEOUT_MS, rng, sleep) is None:
+            opened = time.monotonic()
+            shown = await _wait_with_nudge(page, needed, GOTO_TIMEOUT_MS, rng, sleep)
+            await _note_render(profile, shown is not None, time.monotonic() - opened)
+            if shown is None:
                 if blocked := await detect(page, Platform.TIKTOK):
                     return InteractResult(False, blocked.evidence, checkpoint=blocked)
                 return InteractResult(
@@ -355,9 +359,11 @@ async def _run_sitting(
                     )
                 await humanize.dwell(low=2.0, high=5.0, rng=rng, sleep=sleep)
                 await item.click(timeout=CLICK_MS)
+            opened = time.monotonic()
             bar = await _wait_with_nudge(
                 page, recipe.like + recipe.liked, GOTO_TIMEOUT_MS, rng, sleep
             )
+            await _note_render(profile, bar is not None, time.monotonic() - opened)
             if bar is None:
                 if blocked := await detect(page, Platform.TIKTOK):
                     return InteractResult(False, blocked.evidence, checkpoint=blocked)
@@ -371,6 +377,14 @@ async def _run_sitting(
     except Exception as exc:
         log.warning("tiktok_browser.failed", job=str(job.id), error=_short(exc))
         return InteractResult(False, _short(exc), retryable=True)
+
+
+async def _note_render(profile: Profile, ok: bool, seconds: float) -> None:
+    """Ghi cho proxy cua acc: trang TikTok hien hay khong, sau bao lau. Redis hong thi thoi."""
+    try:
+        await proxy_stats.note_render(getattr(profile, "proxy_id", None), ok, seconds)
+    except Exception:
+        pass
 
 
 def _current_video(page) -> str | None:

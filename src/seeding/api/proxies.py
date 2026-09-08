@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from seeding.api.deps import DEFAULT_PAGE, MAX_PAGE, get_session, paginate
 from seeding.api.schemas import DeleteOut, Page, ProxyImportOut, ProxyOut, ProxyTestOut
 from seeding.domain.models import Account, Profile, Proxy, ProxyKind, ProxyStatus
-from seeding.ops import proxylist, proxytest
+from seeding.ops import proxy_stats, proxylist, proxytest
 
 router = APIRouter(prefix="/proxies", tags=["proxies"])
 
@@ -47,6 +47,9 @@ async def list_proxies(
     for p in proxies:
         out = ProxyOut.model_validate(p)
         out.bound_handle = bound.get(p.id)
+        stats = await proxy_stats.read(p.id)
+        out.tiktok_render = proxy_stats.summary(stats)
+        out.tiktok_last_ok = stats.get("last_ok") if stats else None
         items.append(out)
     return Page[ProxyOut](items=items, total=total, limit=limit, offset=offset)
 

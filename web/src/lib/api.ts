@@ -129,6 +129,8 @@ export type Proxy = {
   status: "untested" | "ok" | "failing" | "retired";
   last_exit_ip: string | null;
   last_error: string | null;
+  tiktok_render: string | null;
+  tiktok_last_ok: boolean | null;
   username: string | null;
   bound_handle: string | null;
 };
