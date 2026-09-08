@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { api, type AccountDetail, type OpenedProfile, type TimelineItem } from "@/lib/api";
+import { IdentityCard } from "@/components/identity";
 import { Avatar, Empty, ErrorNote, PLATFORM_LABEL, StatusPill, useLoad } from "@/components/ui";
 
 /** Chi tiết tài khoản: danh tính, mở trình duyệt, dòng thời gian (đăng + nuôi). */
@@ -120,6 +121,16 @@ export default function AccountPage() {
               </dl>
               <p className="text-xs text-faint">Fingerprint không sửa được — nó là danh tính, không phải cài đặt.</p>
             </section>
+
+            <div className="lg:col-start-2">
+              <IdentityCard
+                accountId={a.id}
+                onChanged={() => {
+                  acc.reload();
+                  timeline.reload();
+                }}
+              />
+            </div>
           </div>
         </>
       )}
@@ -141,6 +152,7 @@ const KIND_VI: Record<TimelineItem["kind"], string> = {
   repost: "Đăng lại",
   browse: "Xem feed",
   session: "Phiên",
+  identity: "Danh tính",
 };
 
 function statusVi(s: TimelineItem["status"]): { text: string; cls: string } {
@@ -186,6 +198,8 @@ function Timeline({ items, loading }: { items: TimelineItem[]; loading: boolean 
                 <span className={it.kind === "post" ? "font-semibold" : ""}>{KIND_VI[it.kind]}</span>
                 {it.kind === "post" ? (
                   <span className="text-muted"> “{it.title}”</span>
+                ) : it.kind === "identity" ? (
+                  <span className="text-muted"> {it.title.replace(/^Đổi danh tính: /, "")}</span>
                 ) : (
                   <span className="mono text-muted"> {handle}</span>
                 )}

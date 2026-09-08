@@ -297,7 +297,7 @@ class SlotMeta(BaseModel):
 
 class TimelineItem(BaseModel):
     at: datetime
-    # post | like | follow | comment | repost | browse | session
+    # post | like | follow | comment | repost | browse | session | identity
     kind: str
     status: JobStatus | None
     title: str
@@ -317,6 +317,39 @@ class ActivitySummary(BaseModel):
     follows: KindCount
     comments: KindCount
     accounts_warming: int
+
+
+# --------------------------------------------------------------- doi danh tinh
+
+
+class IdentitySuggestions(BaseModel):
+    names: list[str]
+    usernames: list[str]
+
+
+class IdentityJobOut(BaseModel):
+    id: uuid.UUID
+    scheduled_at: datetime
+    status: JobStatus
+    plan: str
+
+
+class IdentityOut(BaseModel):
+    handle: str
+    platform: Platform
+    supported: bool
+    why_not: str | None
+    min_days: int
+    last_username_change_at: datetime | None
+    next_username_change_at: datetime | None
+    pending: IdentityJobOut | None
+    suggestions: IdentitySuggestions
+
+
+class IdentityIn(BaseModel):
+    username: str | None = None
+    display_name: str | None = None
+    avatar_media_id: uuid.UUID | None = None
 
 
 # ------------------------------------------------------------------- cho nguoi

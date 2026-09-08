@@ -130,6 +130,11 @@ class ActivityKind(enum.StrEnum):
     FOLLOW = "follow"
     ENGAGE = "engage"  # tha cam xuc vao mot bai cu the
     REPOST = "repost"
+
+    # Doi ten / username / anh dai dien cua CHINH tai khoan. Ke hoach nam trong
+    # target_url dang "identity:{json}" (content/identity.py) - cot kind la VARCHAR(11),
+    # ten nay 8 ky tu, khong phai doi schema.
+    IDENTITY = "identity"
     # Binh luan vao mot video cu the cua nguoi la. Khac ENGAGE (tha tim) o cho no de
     # lai CHU - khong idempotent, khong duoc tu thu lai khi khong ro ket qua.
     COMMENT = "comment"

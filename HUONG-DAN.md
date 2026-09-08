@@ -143,6 +143,25 @@ tiếng**, job X được hẹn lại chứ không vào "Cần bạn". Sửa:
 rồi bật lại worker. Nếu bản mới nhất vẫn lệch, chờ tác giả twifork vá (thường trong
 vài ngày) hoặc tắt X bằng `X_ENABLED=false` cho tới lúc đó.
 
+## 3f. Đổi tên, username, ảnh đại diện (phần 7)
+
+Một lô tài khoản mua về thường mang tên kiểu `user8827361` và ảnh trống. Vào **Chi tiết
+tài khoản → Đổi danh tính**: gõ hoặc bấm gợi ý (tên Việt bình thường, username kiểu
+người thật đặt), chọn ảnh từ thư viện, bấm **Đổi trong vài phút**. Worker làm sau 1–5
+phút, kết quả hiện trên dòng thời gian; username mới thay luôn handle trong CMS.
+
+- Ảnh đại diện: mỗi tài khoản nhận **một bản riêng** từ ảnh gốc (cắt lệch, đôi khi lật,
+  chỉnh sáng nhẹ) — hai acc dùng cùng ảnh không ra hai file giống hệt.
+- Username có luật của từng nền tảng và **thời gian chờ**: Instagram 14 ngày, X đổi thoải
+  mái (CMS vẫn giữ 1 ngày), TikTok 30 ngày. Tên hiển thị và ảnh không giới hạn.
+- **Instagram** và **X** đổi tự động. **TikTok chưa**: web TikTok không lộ endpoint sửa hồ
+  sơ, còn trang sửa hồ sơ qua proxy dân cư mất nhiều phút — bấm *Mở trình duyệt*, vào
+  *Sửa hồ sơ* làm tay.
+- Đang có một lần đổi chờ chạy thì không hẹn thêm; huỷ được khi chưa chạy.
+
+**Chatbot** trong kế hoạch chưa có định nghĩa (trả lời bình luận? nhắn tin? trò chuyện
+với người vận hành?) nên chưa làm — cần nói rõ muốn gì trước.
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua

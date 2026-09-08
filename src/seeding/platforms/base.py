@@ -72,6 +72,7 @@ WarmPlanner = Callable[..., Awaitable[int]]
 HealthCheck = Callable[[Profile], Awaitable[tuple[bool, str]]]
 
 _REGISTRY: dict[Platform, Adapter] = {}
+_IDENTITY: dict[Platform, InteractRunner] = {}
 _INTERACT: dict[Platform, InteractRunner] = {}
 _WARM: dict[Platform, WarmPlanner] = {}
 _HEALTH: dict[Platform, HealthCheck] = {}
@@ -93,6 +94,15 @@ def register_interact(platform: Platform, runner: InteractRunner) -> None:
 
 def get_interact(platform: Platform) -> InteractRunner | None:
     return _INTERACT.get(platform)
+
+
+def register_identity(platform: Platform, runner: InteractRunner) -> None:
+    """Doi ten / username / anh dai dien. Cung hop dong voi runner nuoi."""
+    _IDENTITY[platform] = runner
+
+
+def get_identity(platform: Platform) -> InteractRunner | None:
+    return _IDENTITY.get(platform)
 
 
 def register_warm(platform: Platform, planner: WarmPlanner) -> None:
@@ -119,9 +129,11 @@ _MODULES = (
     "seeding.platforms.instagram.publish",
     "seeding.platforms.instagram.interact",
     "seeding.platforms.instagram.warm",
+    "seeding.platforms.instagram.identity",
     "seeding.platforms.x.publish",
     "seeding.platforms.x.interact",
     "seeding.platforms.x.warm",
+    "seeding.platforms.x.identity",
 )
 
 

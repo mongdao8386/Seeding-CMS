@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.api.deps import get_session
 from seeding.api.schemas import ActivitySummary, KindCount, TimelineItem
+from seeding.content import identity
 from seeding.domain.models import (
     Account,
     AccountStatus,
@@ -46,6 +47,7 @@ _KIND_LABEL = {
     ActivityKind.READ_POST: "browse",
     ActivityKind.REACT: "like",
     ActivityKind.WATCH_VIDEO: "browse",
+    ActivityKind.IDENTITY: "identity",
 }
 
 
@@ -105,7 +107,7 @@ async def timeline(
                 status=a.status,
                 title=_target_label(a),
                 detail=a.detail or a.last_error,
-                url=a.target_url,
+                url=None if a.kind is ActivityKind.IDENTITY else a.target_url,
             )
         )
 
@@ -138,6 +140,8 @@ async def timeline(
 
 
 def _target_label(a: ActivityJob) -> str:
+    if a.kind is ActivityKind.IDENTITY:
+        return "Đổi danh tính: " + identity.describe(identity.plan_from_target(a.target_url))
     url = a.target_url or ""
     handle = url.split("/@")[1].split("/")[0] if "/@" in url else ""
     verb = {

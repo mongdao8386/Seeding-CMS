@@ -295,7 +295,7 @@ ACTIVITY_MAX_ATTEMPTS = 3
 
 
 async def run_activity_job(ctx: dict, job_id: str) -> str:
-    from seeding.domain.models import ActivityJob
+    from seeding.domain.models import ActivityJob, ActivityKind
 
     async with SessionLocal() as session:
         job = (
@@ -314,10 +314,14 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             log.warning("activity.not_ready", handle=job.account.handle, reason=verdict.reason)
             return job.status.value
 
-        runner = adapters.get_interact(job.account.platform)
+        if job.kind is ActivityKind.IDENTITY:
+            runner = adapters.get_identity(job.account.platform)
+        else:
+            runner = adapters.get_interact(job.account.platform)
         if runner is None:
             result = adapters.InteractResult(
-                False, f"chưa có đường nuôi cho {job.account.platform.value} (hoặc đang tắt)"
+                False,
+                f"chưa có đường {job.kind.value} cho {job.account.platform.value} (hoặc đang tắt)",
             )
         else:
             result = await runner(session, profile, job)

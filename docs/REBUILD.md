@@ -69,6 +69,6 @@ devices. Thêm lại khi cần, không phải vì đã có.
 | 4 | Vận hành: hàng đợi chờ người, health, cảnh báo Telegram | Màn hình Tổng quan |
 | 5 | Instagram qua aiograpi: đăng ảnh/Reel, nuôi từ Reels đề xuất, kiểm phiên HTTP | Tab Instagram dùng được y như TikTok |
 | 6 | X qua twifork: đăng chữ/media, nuôi từ For You, kiểm phiên; thư viện lệch báo riêng, không đổ lên tài khoản | Tab X dùng được; Cài đặt báo khi twifork lệch |
-| 7 | Đổi username/tên/avatar theo lịch; chatbot (định nghĩa sau) | |
+| 7 | Đổi username/tên/avatar từ dashboard (Instagram, X; TikTok làm tay); chatbot chưa định nghĩa | Thẻ Đổi danh tính trong Chi tiết tài khoản |
 
 Mỗi phần: code + test + một đoạn trong `HUONG-DAN.md`, rồi commit.

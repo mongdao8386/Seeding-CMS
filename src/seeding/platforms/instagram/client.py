@@ -292,6 +292,18 @@ class InstagramClient:
             return ActionResult(False, "Instagram answered without a comment id", needs_human=True)
         return ActionResult(True, f"comment {pk}", raw=c)
 
+    async def edit_profile(self, *, username: str | None = None, full_name: str | None = None):
+        """Doi username / ten. aiograpi tu nap cac truong con lai tu account_info."""
+        assert self.client is not None
+        fields = {k: v for k, v in (("username", username), ("full_name", full_name)) if v}
+        if not fields:
+            raise ValueError("nothing to edit")
+        return await self.client.account_edit(**fields)
+
+    async def change_picture(self, path: Path):
+        assert self.client is not None
+        return await self.client.account_change_picture(Path(path))
+
     async def upload(self, path: Path, caption: str):
         """Anh -> bai thuong; video -> Reel. Tra ve Media cua aiograpi (pk, code)."""
         assert self.client is not None

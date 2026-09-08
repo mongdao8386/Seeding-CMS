@@ -240,7 +240,7 @@ export type SlotMeta = { timezone: string; weekdays: string[] };
 
 export type TimelineItem = {
   at: string;
-  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session";
+  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity";
   status: JobStatus | null;
   title: string;
   detail: string | null;
@@ -273,6 +273,18 @@ export type Settings = {
   tiktok_interact_via_http: boolean;
   instagram_enabled: boolean;
   x_enabled: boolean;
+};
+
+export type Identity = {
+  handle: string;
+  platform: Platform;
+  supported: boolean;
+  why_not: string | null;
+  min_days: number;
+  last_username_change_at: string | null;
+  next_username_change_at: string | null;
+  pending: { id: string; scheduled_at: string; status: JobStatus; plan: string } | null;
+  suggestions: { names: string[]; usernames: string[] };
 };
 
 export type KindCount = { planned: number; done: number; failed: number };

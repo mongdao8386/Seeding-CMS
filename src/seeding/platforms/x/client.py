@@ -233,6 +233,32 @@ class XClient:
             return ActionResult(False, "X answered without a tweet id", needs_human=True)
         return ActionResult(True, f"reply {tid}", raw=t)
 
+    async def edit_profile(self, *, name: str | None = None):
+        assert self.client is not None
+        return await self.client.update_profile(name=name)
+
+    async def change_username(self, username: str):
+        """v1.1 account/settings.json nhan screen_name. Form body, khong phai JSON."""
+        assert self.client is not None
+        headers = self.client._base_headers | {"content-type": "application/x-www-form-urlencoded"}
+        return await self.client.post(
+            "https://api.x.com/1.1/account/settings.json",
+            data={"screen_name": username.lstrip("@")},
+            headers=headers,
+        )
+
+    async def change_picture(self, path: Path):
+        """v1.1 account/update_profile_image.json, multipart `image`."""
+        assert self.client is not None
+        headers = {k: v for k, v in self.client._base_headers.items() if k != "content-type"}
+        with open(path, "rb") as f:
+            data = f.read()
+        return await self.client.post(
+            "https://api.x.com/1.1/account/update_profile_image.json",
+            files={"image": (Path(path).name, data, "image/jpeg")},
+            headers=headers,
+        )
+
     async def post(self, text: str, media: Path | None = None):
         """Dang mot bai (co the kem mot file). Tra ve Tweet cua twifork."""
         assert self.client is not None
