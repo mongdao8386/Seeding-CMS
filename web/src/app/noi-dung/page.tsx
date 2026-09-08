@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ApiError,
   BASE_URL,
   api,
   qs,
@@ -348,6 +349,32 @@ function ContentPane({
   onSchedule: () => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function remove(c: Content) {
+    if (!confirm(`Xoá bài “${c.title}” khỏi thư viện?`)) return;
+    setBusy(c.id);
+    try {
+      try {
+        await api.del(`/content/${c.id}`);
+      } catch (e) {
+        // Đã lên ít nhất một lần: API chặn, hỏi lại rồi force.
+        if (e instanceof ApiError && e.status === 409) {
+          if (!confirm(`${e.message}\n\nVẫn xoá? Lịch sử đăng của bài này sẽ mất khỏi CMS (bài trên nền tảng không bị xoá).`)) return;
+          await api.del(`/content/${c.id}?force=true`);
+        } else {
+          throw e;
+        }
+      }
+      if (selected?.id === c.id) onSelect(null);
+      onChange();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <section className="flex flex-col gap-3">
@@ -397,10 +424,31 @@ function ContentPane({
                   </>
                 )}
               </div>
+              {selected?.id === c.id && editing !== c.id && (
+                <div className="mt-1 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  <button className="btn text-xs" onClick={() => setEditing(c.id)}>
+                    Sửa
+                  </button>
+                  <button className="btn btn-ghost text-xs text-bad-text" disabled={busy === c.id} onClick={() => remove(c)}>
+                    Xoá
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
       </div>
+      {editing && items.find((c) => c.id === editing) && (
+        <EditContent
+          item={items.find((c) => c.id === editing)!}
+          onDone={() => {
+            setEditing(null);
+            onChange();
+          }}
+          onClose={() => setEditing(null)}
+          onError={onError}
+        />
+      )}
 
       <div className="card sticky bottom-16 flex flex-col gap-2 p-3 lg:bottom-4">
         <span className="label">Lên lịch</span>
@@ -410,6 +458,74 @@ function ContentPane({
         </button>
       </div>
     </section>
+  );
+}
+
+function EditContent({ item, onDone, onClose, onError }: { item: Content; onDone: () => void; onClose: () => void; onError: (m: string) => void }) {
+  const [title, setTitle] = useState(item.title);
+  const [body, setBody] = useState(item.body);
+  const [mediaId, setMediaId] = useState<string | null>(item.media?.id ?? null);
+  const [clear, setClear] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const media = useLoad(() => api.get<Media[]>("/media"), []);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.patch(`/content/${item.id}`, {
+        title: title.trim(),
+        body: body.trim(),
+        media_id: !clear && mediaId && mediaId !== item.media?.id ? mediaId : null,
+        clear_media: clear,
+      });
+      onDone();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card flex flex-col gap-3 p-4 ring-2 ring-accent">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">Sửa bài</span>
+        <button className="btn btn-ghost text-xs" onClick={onClose}>đóng</button>
+      </div>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted">Tiêu đề / caption — dùng {"{a|b}"} để mỗi acc một câu</span>
+        <textarea value={title} onChange={(e) => setTitle(e.target.value)} rows={2} className="w-full px-2.5 py-2" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted">Thân bài</span>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} className="w-full px-2.5 py-2" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted">Video / ảnh</span>
+        <select
+          value={clear ? "" : (mediaId ?? "")}
+          onChange={(e) => {
+            setClear(e.target.value === "");
+            setMediaId(e.target.value || null);
+          }}
+          className="min-h-[36px] px-2"
+        >
+          <option value="">— không có —</option>
+          {(media.data ?? []).map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.original_name} · {m.kind === "video" ? "video" : "ảnh"} {(m.size_bytes / 1048576).toFixed(1)} MB
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-xs text-faint">Sửa ở đây chỉ đổi mẫu trong thư viện. Bài đã lên lịch giữ caption đã sinh; bài đã đăng sửa ở mục Đã đăng.</p>
+      <div className="flex gap-2">
+        <button className="btn btn-primary" disabled={busy || !title.trim()} onClick={save}>
+          {busy ? "Đang lưu…" : "Lưu"}
+        </button>
+        <button className="btn" onClick={onClose}>Thôi</button>
+      </div>
+    </div>
   );
 }
 
