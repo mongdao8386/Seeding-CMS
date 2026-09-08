@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from seeding.domain import fingerprint as fpm
 from seeding.domain.models import (
     Account,
+    AccountRole,
     AccountStatus,
     BrowserEngine,
     Profile,
@@ -205,21 +206,33 @@ async def record_event(
 
 
 async def due_for_health_check(
-    session: AsyncSession, interval_hours: int, limit: int = 20
+    session: AsyncSession,
+    interval_hours: int,
+    limit: int = 20,
+    booster_interval_hours: int | None = None,
 ) -> list[Profile]:
     """Profile da co phien va da qua han kiem tra.
 
     Bo qua profile chua dang nhap lan nao va profile dang cho nguoi xu ly - kiem tra
-    lai chung khong cho them thong tin gi ma van ton mot lan mo trinh duyet.
+    lai chung khong cho them thong tin gi ma van ton mot lan mo trinh duyet. Clone
+    (booster) co han rieng, thua hon: nghin acc kiem moi 12 tieng la nghin request.
     """
-    cutoff = datetime.now(UTC) - timedelta(hours=interval_hours)
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(hours=interval_hours)
+    booster_cutoff = now - timedelta(hours=booster_interval_hours or interval_hours)
+    due_channel = (Account.role != AccountRole.BOOSTER) & (
+        Profile.last_health_at.is_(None) | (Profile.last_health_at <= cutoff)
+    )
+    due_booster = (Account.role == AccountRole.BOOSTER) & (
+        Profile.last_health_at.is_(None) | (Profile.last_health_at <= booster_cutoff)
+    )
     stmt = (
         select(Profile)
         .join(Account, Account.id == Profile.account_id)
         .where(
             Profile.cookies_enc.is_not(None),
             Account.status != AccountStatus.NEEDS_HUMAN,
-            (Profile.last_health_at.is_(None)) | (Profile.last_health_at <= cutoff),
+            due_channel | due_booster,
         )
         .order_by(Profile.last_health_at.nulls_first())
         .limit(limit)

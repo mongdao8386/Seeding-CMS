@@ -108,6 +108,19 @@ async def _account(s, *, posted: bool = False, scheduled: bool = False) -> Accou
     return account
 
 
+async def _cleanup_content() -> None:
+    """Noi dung / chien dich 'thu' tao cho bai gia khong cascade theo acc - don tay."""
+    from sqlalchemy import delete, select
+
+    async with SessionLocal() as s:
+        ids = (
+            await s.execute(select(ContentItem.id).where(ContentItem.title_template == "thu"))
+        ).scalars().all()
+        await s.execute(delete(Campaign).where(Campaign.content_item_id.in_(ids)))
+        await s.execute(delete(ContentItem).where(ContentItem.id.in_(ids)))
+        await s.commit()
+
+
 async def _exists(account_id) -> bool:
     async with SessionLocal() as s:
         return await s.get(Account, account_id) is not None
@@ -119,6 +132,7 @@ async def test_deleting_an_account_with_a_scheduled_post_works(client):
     r = await client.delete(f"/accounts/{acc.id}")
     assert r.status_code == 200, r.text
     assert not await _exists(acc.id)
+    await _cleanup_content()
 
 
 async def test_posted_account_needs_force(client):
@@ -130,6 +144,7 @@ async def test_posted_account_needs_force(client):
     r = await client.delete(f"/accounts/{acc.id}?force=true")
     assert r.status_code == 200
     assert not await _exists(acc.id)
+    await _cleanup_content()
 
 
 async def test_bulk_delete_selected_skips_posted_unless_forced(client):
@@ -146,6 +161,7 @@ async def test_bulk_delete_selected_skips_posted_unless_forced(client):
     r = await client.post("/accounts/bulk-delete", json={"ids": [str(c.id)], "force": True})
     assert r.json()["deleted"] == 1
     assert not await _exists(c.id)
+    await _cleanup_content()
 
 
 async def test_bulk_delete_all(client):

@@ -23,7 +23,7 @@ from seeding.config import get_settings
 from seeding.db import SessionLocal
 from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
-from seeding.domain.models import AccountStatus, Attempt, JobStatus, PostJob
+from seeding.domain.models import AccountStatus, ActivityKind, Attempt, JobStatus, PostJob
 from seeding.ops import flags
 from seeding.platforms import base as adapters
 from seeding.scheduling import governor
@@ -233,6 +233,29 @@ async def prune_media(ctx: dict) -> int:
     return int(result["removed"])
 
 
+async def prune_history(ctx: dict) -> int:
+    """Xoa lich su nuoi va su kien phien cu hon ACTIVITY_RETENTION_DAYS. Nghin acc clone
+    la hang nghin dong moi ngay; bang activity_jobs khong duoc lon mai."""
+    from sqlalchemy import delete
+
+    from seeding.domain.models import ActivityJob, SessionEvent
+
+    cutoff = datetime.now(UTC) - timedelta(days=get_settings().activity_retention_days)
+    async with SessionLocal() as session:
+        jobs = await session.execute(
+            delete(ActivityJob).where(
+                ActivityJob.scheduled_at < cutoff,
+                ActivityJob.status.in_([JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.SKIPPED]),
+            )
+        )
+        events = await session.execute(delete(SessionEvent).where(SessionEvent.created_at < cutoff))
+        await session.commit()
+    removed = int(jobs.rowcount or 0) + int(events.rowcount or 0)
+    if removed:
+        log.info("prune_history.done", jobs=jobs.rowcount, events=events.rowcount)
+    return removed
+
+
 # ------------------------------------------------------------------ nuoi (phan 3)
 
 
@@ -326,6 +349,94 @@ ACTIVITY_MAX_ATTEMPTS = 3
 # sau 45 phut trung gio job ke tiep) la hai "thiet bi" cung dang nhap tu mot proxy - dau
 # vet khong nguoi that nao de lai. TTL bang job_timeout de khoa khong bao gio ket mai.
 ACCOUNT_LOCK_TTL = 1500
+# Gom job cung acc: khi mot job trinh duyet chay, cac job MO THANG LINK khac cua cung acc
+# toi han trong khoang nay di chung mot trinh duyet (toi da BATCH_MAX). Clone 2-5 luot
+# thich/ngay -> mot lan mo. Phien luot (BROWSE_FEED) di rieng.
+BATCH_HORIZON = timedelta(hours=4)
+BATCH_MAX = 5
+PER_TARGET = (
+    ActivityKind.ENGAGE,
+    ActivityKind.FOLLOW,
+    ActivityKind.COMMENT,
+    ActivityKind.REPOST,
+)
+# Cho mot cho trinh duyet toi da tung nay giay; khong co thi hen lai vai phut.
+BROWSER_WAIT_S = 30
+_browser_slots: asyncio.Semaphore | None = None
+
+
+def browser_slots() -> asyncio.Semaphore:
+    """Semaphore theo tien trinh: so trinh duyet mo song song. Nhieu tien trinh worker =
+    nhan len bay nhieu (moi tien trinh tu gioi han phan minh)."""
+    global _browser_slots
+    if _browser_slots is None:
+        _browser_slots = asyncio.Semaphore(max(1, get_settings().browser_concurrency))
+    return _browser_slots
+
+
+async def _claim_siblings(session, job) -> list:
+    """Job mo thang link cua cung acc, toi han trong BATCH_HORIZON: nhan luon de chay
+    chung trinh duyet. Nhan bang UPDATE co dieu kien nhu activity_tick."""
+    from seeding.domain.models import ActivityJob
+
+    if job.kind not in PER_TARGET:
+        return []
+    now = datetime.now(UTC)
+    rows = (
+        await session.execute(
+            select(ActivityJob)
+            .where(
+                ActivityJob.account_id == job.account_id,
+                ActivityJob.id != job.id,
+                ActivityJob.status == JobStatus.SCHEDULED,
+                ActivityJob.kind.in_(PER_TARGET),
+                ActivityJob.scheduled_at <= now + BATCH_HORIZON,
+            )
+            .order_by(ActivityJob.scheduled_at)
+            .limit(BATCH_MAX - 1)
+        )
+    ).scalars()
+    claimed = []
+    for sib in list(rows):
+        res = await session.execute(
+            update(ActivityJob)
+            .where(ActivityJob.id == sib.id, ActivityJob.status == JobStatus.SCHEDULED)
+            .values(status=JobStatus.RUNNING, attempt_count=ActivityJob.attempt_count + 1)
+        )
+        if res.rowcount == 1:
+            claimed.append(sib)
+    await session.commit()
+    for sib in claimed:
+        await session.refresh(sib)
+    return claimed
+
+
+async def _apply_result(session, job, result) -> None:
+    job.detail = result.detail
+    if result.ok:
+        job.status = JobStatus.SUCCEEDED
+        job.last_error = None
+    elif result.checkpoint and not result.checkpoint.is_terminal:
+        job.status = JobStatus.NEEDS_HUMAN
+        job.last_error = result.detail
+        from seeding.ops import takeover
+
+        await takeover.open_request(session, job.account, result.detail)
+    elif result.retryable and job.attempt_count < ACTIVITY_MAX_ATTEMPTS:
+        job.status = JobStatus.SCHEDULED
+        job.scheduled_at = datetime.now(UTC) + timedelta(minutes=45)
+        job.last_error = result.detail
+    else:
+        job.status = JobStatus.FAILED
+        job.last_error = result.detail
+
+
+def _defer(job, minutes: int, why: str) -> None:
+    """Tra job ve hang doi ma khong tinh mot lan thu."""
+    job.attempt_count = max(0, job.attempt_count - 1)
+    job.status = JobStatus.SCHEDULED
+    job.scheduled_at = datetime.now(UTC) + timedelta(minutes=minutes)
+    job.last_error = why
 
 
 async def run_activity_job(ctx: dict, job_id: str) -> str:
@@ -360,58 +471,69 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
         ):
             # Acc dang ban voi job khac: tra ve hang doi, thu lai sau vai phut, khong tinh
             # la mot lan thu.
-            job.attempt_count -= 1
-            job.status = JobStatus.SCHEDULED
-            job.scheduled_at = datetime.now(UTC) + timedelta(minutes=3)
+            _defer(job, 3, "acc đang bận với việc khác")
             await session.commit()
             log.info("activity.deferred", job=job_id, handle=job.account.handle)
             return "deferred"
 
+        platform = job.account.platform
+        slot = browser_slots() if adapters.uses_browser(platform) else None
+        if slot is not None:
+            try:
+                await asyncio.wait_for(slot.acquire(), timeout=BROWSER_WAIT_S)
+            except TimeoutError:
+                if redis is not None:
+                    await redis.delete(lock_key)
+                _defer(job, random.randint(2, 6), "hết chỗ trình duyệt, hẹn lại")
+                await session.commit()
+                log.info("activity.no_browser_slot", job=job_id, handle=job.account.handle)
+                return "deferred"
+
+        batch = [job]
+        results: dict = {}
         try:
             if job.kind is ActivityKind.IDENTITY:
-                runner = adapters.get_identity(job.account.platform)
+                runner = adapters.get_identity(platform)
             elif job.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
-                runner = adapters.get_manage(job.account.platform)
+                runner = adapters.get_manage(platform)
             else:
-                runner = adapters.get_interact(job.account.platform)
+                runner = adapters.get_interact(platform)
+            many = adapters.get_interact_many(platform) if job.kind in PER_TARGET else None
+            if many is not None:
+                batch += await _claim_siblings(session, job)
             if runner is None:
-                result = adapters.InteractResult(
+                results[job.id] = adapters.InteractResult(
                     False,
-                    f"chưa có đường {job.kind.value} cho {job.account.platform.value}"
-                    " (hoặc đang tắt)",
+                    f"chưa có đường {job.kind.value} cho {platform.value} (hoặc đang tắt)",
                 )
+            elif many is not None and len(batch) > 1:
+                results = await many(session, profile, batch)
             else:
-                result = await runner(session, profile, job)
+                results[job.id] = await runner(session, profile, job)
         finally:
+            if slot is not None:
+                slot.release()
             if redis is not None:
                 await redis.delete(lock_key)
 
-        job.detail = result.detail
-        if result.ok:
-            job.status = JobStatus.SUCCEEDED
-            job.last_error = None
-        elif result.checkpoint and not result.checkpoint.is_terminal:
-            job.status = JobStatus.NEEDS_HUMAN
-            job.last_error = result.detail
-            from seeding.ops import takeover
-
-            await takeover.open_request(session, job.account, result.detail)
-        elif result.retryable and job.attempt_count < ACTIVITY_MAX_ATTEMPTS:
-            job.status = JobStatus.SCHEDULED
-            job.scheduled_at = datetime.now(UTC) + timedelta(minutes=45)
-            job.last_error = result.detail
-        else:
-            job.status = JobStatus.FAILED
-            job.last_error = result.detail
+        for item in batch:
+            result = results.get(item.id)
+            if result is None:
+                # Chua toi luot (acc gap checkpoint o job truoc): tra ve hang doi.
+                _defer(item, 3, "chưa tới lượt trong phiên trình duyệt, hẹn lại")
+                continue
+            await _apply_result(session, item, result)
         await session.commit()
-        log.info(
-            "activity.finished",
-            job=job_id,
-            handle=job.account.handle,
-            kind=job.kind.value,
-            status=job.status.value,
-            detail=result.detail,
-        )
+        for item in batch:
+            log.info(
+                "activity.finished",
+                job=str(item.id),
+                handle=job.account.handle,
+                kind=item.kind.value,
+                status=item.status.value,
+                detail=item.detail or item.last_error,
+                batched=len(batch) > 1,
+            )
         return job.status.value
 
 
@@ -433,7 +555,10 @@ async def health_sweep(ctx: dict) -> int:
             log.warning("health_sweep.reconciled", count=healed)
 
         due = await profiles_mod.due_for_health_check(
-            session, settings.health_check_interval_hours, limit=10
+            session,
+            settings.health_check_interval_hours,
+            limit=settings.health_sweep_limit,
+            booster_interval_hours=settings.booster_health_interval_hours,
         )
         for profile in due:
             account = await session.get(Account, profile.account_id)

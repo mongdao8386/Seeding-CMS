@@ -38,7 +38,12 @@ from seeding.domain.models import (
     Profile,
 )
 from seeding.ops import proxy_stats
-from seeding.platforms.base import InteractResult, register_interact
+from seeding.platforms.base import (
+    InteractResult,
+    mark_browser,
+    register_interact,
+    register_interact_many,
+)
 from seeding.platforms.outreach import direct_ok, ensure_proxy_loaded, watch_seconds
 from seeding.platforms.tiktok import sitting as sitting_mod
 from seeding.platforms.tiktok.health import session_dead
@@ -115,6 +120,72 @@ async def run(
     recipe: Recipe = RECIPE,
 ) -> InteractResult:
     rng = rng or random.Random()
+    if refused := await _precheck(session, profile, job):
+        return refused
+
+    if job.kind is ActivityKind.BROWSE_FEED:
+        return await _run_sitting(
+            session, profile, job, open=open, rng=rng, sleep=sleep, recipe=recipe
+        )
+
+    url = await _target_url(session, job)
+    if isinstance(url, InteractResult):
+        return url
+
+    try:
+        headless = get_settings().headless_jobs
+        async with open(profile, headless=headless, humanize=True) as (_b, context):
+            page = await context.new_page()
+            return await _act_on_page(page, profile, job, url, recipe, rng, sleep)
+    except Exception as exc:
+        log.warning("tiktok_browser.failed", job=str(job.id), error=_short(exc))
+        return InteractResult(False, _short(exc), retryable=True)
+
+
+async def run_many(
+    session: AsyncSession,
+    profile: Profile,
+    jobs: list[ActivityJob],
+    *,
+    open=open_profile,
+    rng: random.Random | None = None,
+    sleep=asyncio.sleep,
+    recipe: Recipe = RECIPE,
+) -> dict:
+    """Nhieu job cua CUNG mot acc trong MOT trinh duyet: clone co 2-5 luot thich moi ngay
+    thanh mot lan mo (45 giay hien trang, khong proxy) thay vi 2-5 lan. Job chua toi luot
+    khi acc gap checkpoint thi KHONG co trong ket qua - worker tra chung ve hang doi."""
+    rng = rng or random.Random()
+    results: dict = {}
+    if not jobs:
+        return results
+    if refused := await _precheck(session, profile, jobs[0]):
+        return {job.id: refused for job in jobs}
+    try:
+        headless = get_settings().headless_jobs
+        async with open(profile, headless=headless, humanize=True) as (_b, context):
+            page = await context.new_page()
+            for i, job in enumerate(jobs):
+                url = await _target_url(session, job)
+                if isinstance(url, InteractResult):
+                    results[job.id] = url
+                    continue
+                res = await _act_on_page(page, profile, job, url, recipe, rng, sleep)
+                results[job.id] = res
+                if res.checkpoint is not None:
+                    break
+                if i < len(jobs) - 1:
+                    # Nghi giua hai video: nguoi that khong nhay link nay sang link kia.
+                    await humanize.dwell(low=8.0, high=25.0, rng=rng, sleep=sleep)
+    except Exception as exc:
+        err = InteractResult(False, _short(exc), retryable=True)
+        log.warning("tiktok_browser.failed", job=str(jobs[0].id), error=_short(exc))
+        for job in jobs:
+            results.setdefault(job.id, err)
+    return results
+
+
+async def _precheck(session, profile: Profile, job: ActivityJob) -> InteractResult | None:
     await ensure_proxy_loaded(session, profile)
     if profile is None or (profile.proxy is None and not direct_ok(job)):
         return InteractResult(False, "chưa có proxy (no proxy) - không mở TikTok bằng IP máy chủ")
@@ -127,12 +198,10 @@ async def run(
         return InteractResult(
             False, reason, checkpoint=Checkpoint(CheckpointKind.LOGGED_OUT, reason)
         )
+    return None
 
-    if job.kind is ActivityKind.BROWSE_FEED:
-        return await _run_sitting(
-            session, profile, job, open=open, rng=rng, sleep=sleep, recipe=recipe
-        )
 
+async def _target_url(session, job: ActivityJob) -> str | InteractResult:
     handle, item_id = parse_target(job.target_url)
     if job.kind is ActivityKind.FOLLOW and job.target_account_id is not None:
         target = await session.get(Account, job.target_account_id)
@@ -140,72 +209,67 @@ async def run(
     if job.kind is ActivityKind.FOLLOW:
         if not handle:
             return InteractResult(False, "job follow không có tên người cần follow")
-        url = profile_url(handle)
+        return profile_url(handle)
+    if not item_id:
+        return InteractResult(False, f"job {job.kind.value} không có link video")
+    return job.target_url
+
+
+async def _act_on_page(
+    page, profile: Profile, job: ActivityJob, url: str, recipe: Recipe, rng, sleep
+) -> InteractResult:
+    """Mot job tren mot trang da mo: goto -> cho thanh hanh dong -> xem -> bam."""
+    await page.goto(url, wait_until="domcontentloaded", timeout=GOTO_TIMEOUT_MS)
+    if blocked := await detect(page, Platform.TIKTOK):
+        return InteractResult(False, blocked.evidence, checkpoint=blocked)
+
+    # domcontentloaded chi la cai vo: qua proxy dan cu, JS cua TikTok con tai them
+    # vai phut nua roi moi ve nut. Cho nut can dung xuat hien truoc, roi moi XEM.
+    if job.kind is ActivityKind.FOLLOW:
+        needed = recipe.follow + recipe.following
+    elif job.kind is ActivityKind.COMMENT:
+        needed = recipe.comment_open + recipe.comment_editor + recipe.like
+    elif job.kind is ActivityKind.REPOST:
+        needed = recipe.share_open + recipe.like + recipe.reposted
     else:
-        if not item_id:
-            return InteractResult(False, f"job {job.kind.value} không có link video")
-        url = job.target_url
+        needed = recipe.like + recipe.liked
+    opened = time.monotonic()
+    shown = await _wait_with_nudge(page, needed, GOTO_TIMEOUT_MS, rng, sleep)
+    await _note_render(profile, shown is not None, time.monotonic() - opened)
+    if shown is None:
+        if blocked := await detect(page, Platform.TIKTOK):
+            return InteractResult(False, blocked.evidence, checkpoint=blocked)
+        return InteractResult(
+            False,
+            f"trang không hiện thanh hành động trong {GOTO_TIMEOUT_MS // 1000}s "
+            "(proxy chậm hoặc trang trống, page never rendered) - sẽ thử lại",
+            retryable=True,
+        )
+
+    # XEM. Trang video tu phat; day la 30-45 giay TikTok that su thay.
+    await sleep(watch_seconds(job))
 
     try:
-        headless = get_settings().headless_jobs
-        async with open(profile, headless=headless, humanize=True) as (_b, context):
-            page = await context.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=GOTO_TIMEOUT_MS)
-            if blocked := await detect(page, Platform.TIKTOK):
-                return InteractResult(False, blocked.evidence, checkpoint=blocked)
+        if job.kind is ActivityKind.ENGAGE:
+            result = await _like(page, recipe, rng, sleep)
+        elif job.kind is ActivityKind.FOLLOW:
+            result = await _follow(page, recipe, rng, sleep)
+        elif job.kind is ActivityKind.COMMENT:
+            result = await _comment(page, recipe, warm_comment(job.id, "tiktok", rng), rng, sleep)
+        else:
+            result = await _repost(page, recipe, rng, sleep)
+    except PlaywrightError as exc:
+        # Bam khong toi: 08/09/2026 tren P05, hop captcha cua TikTok hien DE LEN
+        # nut tim dung luc bam ("subtree intercepts pointer events"). Do la
+        # checkpoint cho nguoi, khong phai loi tam de thu lai.
+        if blocked := await detect(page, Platform.TIKTOK):
+            return InteractResult(False, blocked.evidence, checkpoint=blocked)
+        return InteractResult(False, f"cú bấm bị chặn: {_short(exc)}", retryable=True)
 
-            # domcontentloaded chi la cai vo: qua proxy dan cu, JS cua TikTok con tai them
-            # vai phut nua roi moi ve nut. Cho nut can dung xuat hien truoc, roi moi XEM.
-            if job.kind is ActivityKind.FOLLOW:
-                needed = recipe.follow + recipe.following
-            elif job.kind is ActivityKind.COMMENT:
-                needed = recipe.comment_open + recipe.comment_editor + recipe.like
-            elif job.kind is ActivityKind.REPOST:
-                needed = recipe.share_open + recipe.like + recipe.reposted
-            else:
-                needed = recipe.like + recipe.liked
-            opened = time.monotonic()
-            shown = await _wait_with_nudge(page, needed, GOTO_TIMEOUT_MS, rng, sleep)
-            await _note_render(profile, shown is not None, time.monotonic() - opened)
-            if shown is None:
-                if blocked := await detect(page, Platform.TIKTOK):
-                    return InteractResult(False, blocked.evidence, checkpoint=blocked)
-                return InteractResult(
-                    False,
-                    f"trang không hiện thanh hành động trong {GOTO_TIMEOUT_MS // 1000}s "
-                    "(proxy chậm hoặc trang trống, page never rendered) - sẽ thử lại",
-                    retryable=True,
-                )
-
-            # XEM. Trang video tu phat; day la 30-45 giay TikTok that su thay.
-            await sleep(watch_seconds(job))
-
-            try:
-                if job.kind is ActivityKind.ENGAGE:
-                    result = await _like(page, recipe, rng, sleep)
-                elif job.kind is ActivityKind.FOLLOW:
-                    result = await _follow(page, recipe, rng, sleep)
-                elif job.kind is ActivityKind.COMMENT:
-                    result = await _comment(
-                        page, recipe, warm_comment(job.id, "tiktok", rng), rng, sleep
-                    )
-                else:
-                    result = await _repost(page, recipe, rng, sleep)
-            except PlaywrightError as exc:
-                # Bam khong toi: 08/09/2026 tren P05, hop captcha cua TikTok hien DE LEN
-                # nut tim dung luc bam ("subtree intercepts pointer events"). Do la
-                # checkpoint cho nguoi, khong phai loi tam de thu lai.
-                if blocked := await detect(page, Platform.TIKTOK):
-                    return InteractResult(False, blocked.evidence, checkpoint=blocked)
-                return InteractResult(False, f"cú bấm bị chặn: {_short(exc)}", retryable=True)
-
-            if not result.ok and result.checkpoint is None:
-                if blocked := await detect(page, Platform.TIKTOK):
-                    return InteractResult(False, blocked.evidence, checkpoint=blocked)
-            return result
-    except Exception as exc:
-        log.warning("tiktok_browser.failed", job=str(job.id), error=_short(exc))
-        return InteractResult(False, _short(exc), retryable=True)
+    if not result.ok and result.checkpoint is None:
+        if blocked := await detect(page, Platform.TIKTOK):
+            return InteractResult(False, blocked.evidence, checkpoint=blocked)
+    return result
 
 
 def _short(exc: BaseException) -> str:
@@ -317,6 +381,8 @@ async def _repost(page, r: Recipe, rng, sleep) -> InteractResult:
 
 if get_settings().tiktok_actions == "browser":
     register_interact(Platform.TIKTOK, run)
+    register_interact_many(Platform.TIKTOK, run_many)
+    mark_browser(Platform.TIKTOK)
 
 
 # ------------------------------------------------------------------ phien luot xem

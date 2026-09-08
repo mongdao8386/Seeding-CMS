@@ -408,3 +408,67 @@ async def test_sitting_hands_a_checkpoint_to_a_human_with_actions_so_far(monkeyp
     )
     assert not res.ok and res.checkpoint is not None and res.checkpoint.kind.value == "captcha"
     assert len(session.added) == 1, "tim cua video thu hai da ghi lai truoc khi dung"
+
+
+async def test_run_many_shares_one_browser_across_an_accounts_jobs(monkeypatch):
+    """Clone: 2 luot thich + 1 follow trong MOT trinh duyet - ba lan goto, mot lan mo."""
+    monkeypatch.setattr(tb, "detect", _no_checkpoint)
+    r = tb.Recipe()
+    page = _Page(visible={r.like[0], r.follow[0]})
+    opened = _Open(page)
+    opens = {"n": 0}
+    real_call = opened.__call__
+
+    def counting(profile, *, headless, humanize):
+        opens["n"] += 1
+        return real_call(profile, headless=headless, humanize=humanize)
+
+    jobs = [
+        _job(ActivityKind.ENGAGE, "https://www.tiktok.com/@a/video/1"),
+        _job(ActivityKind.ENGAGE, "https://www.tiktok.com/@b/video/2"),
+        _job(ActivityKind.FOLLOW, "https://www.tiktok.com/@b"),
+    ]
+    res = await tb.run_many(
+        _NoSession(), _profile(), jobs, open=counting, rng=random.Random(1), sleep=_sleep
+    )
+    assert opens["n"] == 1
+    assert [res[j.id].ok for j in jobs] == [True, True, True]
+    assert [e for e in page.log if e.startswith("goto:")] == [
+        "goto:https://www.tiktok.com/@a/video/1",
+        "goto:https://www.tiktok.com/@b/video/2",
+        "goto:https://www.tiktok.com/@b",
+    ]
+
+
+async def test_run_many_stops_at_a_checkpoint_and_leaves_the_rest_unclaimed(monkeypatch):
+    calls = {"n": 0}
+
+    async def captcha_second_page(page, platform=None):
+        from seeding.browser.checkpoints import Checkpoint, CheckpointKind
+
+        calls["n"] += 1
+        # goto 1 -> detect (1) ok; goto 2 -> detect (2) captcha
+        return Checkpoint(CheckpointKind.CAPTCHA, "found captcha") if calls["n"] == 2 else None
+
+    monkeypatch.setattr(tb, "detect", captcha_second_page)
+    r = tb.Recipe()
+    page = _Page(visible={r.like[0]})
+    jobs = [_job(ActivityKind.ENGAGE, f"https://www.tiktok.com/@c/video/{i}") for i in range(3)]
+    res = await tb.run_many(
+        _NoSession(), _profile(), jobs, open=_Open(page), rng=random.Random(1), sleep=_sleep
+    )
+    assert res[jobs[0].id].ok
+    assert res[jobs[1].id].checkpoint is not None
+    assert jobs[2].id not in res, "job chua toi luot khong co ket qua - worker tra ve hang doi"
+
+
+async def test_run_many_refuses_everything_when_the_session_is_dead(monkeypatch):
+    async def dead(profile):
+        return "phiên chết: session_expired"
+
+    monkeypatch.setattr(tb, "session_dead", dead)
+    jobs = [_job(ActivityKind.ENGAGE, VIDEO), _job(ActivityKind.ENGAGE, VIDEO)]
+    page = _Page(visible=set())
+    res = await tb.run_many(_NoSession(), _profile(), jobs, open=_Open(page), sleep=_sleep)
+    assert all(res[j.id].checkpoint is not None for j in jobs)
+    assert not page.log, "khong mo trinh duyet"

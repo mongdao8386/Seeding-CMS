@@ -368,3 +368,48 @@ rõ kết quả thì bài vào trạng thái **cần bạn**, vì thử lại c�
   trình duyệt xem bài đã lên chưa rồi mới bấm "Đã giải".
 
 Sinh token / khoá: `python scripts/gen_api_token.py`, `python scripts/gen_vault_key.py`.
+
+## 9. Chịu tải: 100 acc chính + hàng nghìn acc clone
+
+**Đã đo 08/09/2026** (`python scripts/load_test.py 100 1000`, acc giả, không mở trình
+duyệt): nạp 1.100 acc 9,5 s; lập lịch clone → bài kênh 22,6 s cho 5.402 job; lập phiên
+lướt 100 kênh 1,9 s; một tick nhặt 50 job 0,65 s; danh sách tài khoản 0,11 s; lọc "sẵn
+sàng" 0,71 s; xoá 1.100 acc 4,7 s. Phần DB và dashboard không phải nút thắt.
+
+**Nút thắt là trình duyệt.** Mỗi phiên Camoufox tốn ~400–600 MB RAM và một lõi CPU;
+qua proxy dân cư trang TikTok mất 2–8 phút mới hiện. Ba việc hệ thống làm để 1.000
+clone không cần 1.000 lần mở trình duyệt mỗi ngày:
+
+- **Gom job cùng acc**: khi một job mở-thẳng-link của acc chạy, mọi job cùng loại của
+  acc đó tới hạn trong 4 giờ tới (tối đa 5) đi chung một trình duyệt, nghỉ 8–25 giây
+  giữa hai video. Clone 2–5 lượt thích/ngày = một lần mở (~45 giây hiện trang vì không
+  proxy, rồi mỗi video 30–45 giây xem). Gặp checkpoint thì các job chưa tới lượt trả về
+  hàng đợi, acc vào hàng chờ người.
+- **Phiên lướt** cho acc xây kênh (mục 3b): 2–3 lần mở/ngày thay vì 6–10.
+- **Giới hạn song song** `BROWSER_CONCURRENCY` (mặc định 4): job trình duyệt không lấy
+  được chỗ trong 30 giây thì hẹn lại 2–6 phút, không tính lần thử. `WORKER_MAX_JOBS`
+  (mặc định 20) là số job ARQ chạy đồng thời, chỉ cần đủ cho job HTTP (đăng bài, chatbot,
+  Instagram/X/Reddit).
+
+**Ước lượng máy.** Một trình duyệt song song ≈ 400–600 MB RAM + 1 lõi. Khung giờ 7h–23h
+= 16 giờ.
+
+| Đội | Việc/ngày | Phút trình duyệt/ngày | Cần song song |
+|---|---|---|---|
+| 100 kênh | 250 phiên lướt × ~10 phút (proxy chậm) | ~2.500 | 3 |
+| 1.000 clone | 1.000 lần mở × ~4 phút (không proxy) | ~4.000 | 4–5 |
+
+→ Một máy 8 lõi / 16 GB với `BROWSER_CONCURRENCY=8` chạy được 100 kênh + 1.000 clone.
+Hơn nữa thì mở thêm tiến trình worker (mỗi tiến trình có giới hạn riêng, khoá theo acc
+nằm ở Redis nên không đụng nhau; cron lập lịch chỉ chạy ở một tiến trình).
+
+**Kiểm phiên** qua HTTP ~2 giây/acc, quét mỗi 15 phút, mỗi lượt tối đa
+`HEALTH_SWEEP_LIMIT` (200) profile: 1.100 acc quét hết trong ~1,5 giờ. Clone kiểm mỗi
+`BOOSTER_HEALTH_INTERVAL_HOURS` (24), kênh mỗi `HEALTH_CHECK_INTERVAL_HOURS` (12).
+
+**Dữ liệu**: lịch sử nuôi và sự kiện phiên cũ hơn `ACTIVITY_RETENTION_DAYS` (90) được
+dọn lúc 04:40 mỗi ngày; chỉ mục theo (acc, giờ) và (trạng thái, giờ) đã có.
+
+**Chưa đo được**: TikTok chịu bao nhiêu lượt thích từ một IP máy chủ mỗi ngày (clone
+không proxy là lựa chọn của bạn); đó là con số phải dò dần bằng cách tăng số clone theo
+từng đợt và nhìn hàng chờ người.

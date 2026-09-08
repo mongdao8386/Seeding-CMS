@@ -77,6 +77,11 @@ _MANAGE: dict[Platform, InteractRunner] = {}
 # (profile, account) -> Channel (mo bang `async with`)
 _CHATBOT: dict[Platform, Callable[..., object]] = {}
 _INTERACT: dict[Platform, InteractRunner] = {}
+# (session, profile, [job, ...]) -> {job.id: InteractResult}: nhieu job cua CUNG mot acc
+# trong MOT trinh duyet. Chi dang ky cho nen tang di bang trinh duyet.
+_INTERACT_MANY: dict[Platform, Callable[..., Awaitable[dict]]] = {}
+# Nen tang ma runner mo trinh duyet (~400MB moi phien): worker gioi han so phien song song.
+_BROWSER: set[Platform] = set()
 _WARM: dict[Platform, WarmPlanner] = {}
 _HEALTH: dict[Platform, HealthCheck] = {}
 
@@ -93,6 +98,22 @@ def get(platform: Platform) -> Adapter:
 
 def register_interact(platform: Platform, runner: InteractRunner) -> None:
     _INTERACT[platform] = runner
+
+
+def register_interact_many(platform: Platform, runner: Callable[..., Awaitable[dict]]) -> None:
+    _INTERACT_MANY[platform] = runner
+
+
+def get_interact_many(platform: Platform) -> Callable[..., Awaitable[dict]] | None:
+    return _INTERACT_MANY.get(platform)
+
+
+def mark_browser(platform: Platform) -> None:
+    _BROWSER.add(platform)
+
+
+def uses_browser(platform: Platform) -> bool:
+    return platform in _BROWSER
 
 
 def get_interact(platform: Platform) -> InteractRunner | None:

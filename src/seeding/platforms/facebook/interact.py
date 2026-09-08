@@ -18,7 +18,7 @@ from seeding.browser.session import open_profile
 from seeding.config import get_settings
 from seeding.content.comments import comment_text
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
-from seeding.platforms.base import InteractResult, register_interact
+from seeding.platforms.base import InteractResult, mark_browser, register_interact
 from seeding.platforms.facebook.publish import COMMENT
 from seeding.platforms.outreach import direct_ok, ensure_proxy_loaded
 
@@ -159,3 +159,4 @@ async def _comment(page, text: str, rng: random.Random) -> InteractResult:
 
 if get_settings().facebook_enabled:
     register_interact(Platform.FACEBOOK, run)
+mark_browser(Platform.FACEBOOK)

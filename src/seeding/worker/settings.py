@@ -19,6 +19,7 @@ from seeding.worker.tasks import (
     chatbot_tick,
     health_sweep,
     plan_activity,
+    prune_history,
     prune_media,
     reclaim_orphans,
     run_activity_job,
@@ -65,8 +66,10 @@ class WorkerSettings:
         cron(activity_tick, second={15}),
         cron(plan_activity, hour={6}, minute={0}, run_at_startup=True),
         cron(prune_media, hour={4}, minute={30}),
-        # Kiem phien moi tieng; moi lan chi 10 profile qua han nhat.
-        cron(health_sweep, minute={7}),
+        cron(prune_history, hour={4}, minute={40}),
+        # Kiem phien moi 15 phut, moi lan toi da HEALTH_SWEEP_LIMIT profile qua han nhat
+        # (HTTP ~2 giay/acc: 200 acc trong ~7 phut). Nghin acc quet het trong vai gio.
+        cron(health_sweep, minute={7, 22, 37, 52}),
         # Chatbot: moi N phut (CHATBOT_INTERVAL_MINUTES), tat thi tick tra ve 0 ngay.
         cron(
             chatbot_tick,
@@ -76,7 +79,9 @@ class WorkerSettings:
         cron(heartbeat, minute=set(range(0, 60, 5)), run_at_startup=True),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
-    max_jobs = 5
+    # Job dong thoi (HTTP + trinh duyet). Trinh duyet bi gioi han rieng boi
+    # BROWSER_CONCURRENCY trong tasks.py, nen so nay chi can du cho job HTTP.
+    max_jobs = get_settings().worker_max_jobs
     # Mot job trinh duyet TikTok qua proxy dan cu co the mat 8-9 phut (cho thanh hanh dong
     # toi 480s + xem 45s). 300s se giet job dung luc no sap bam.
     # Phien luot: cho trang toi 8 phut + luot toi 12 phut + bam. 25 phut.

@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     # Kiem tra phien con song moi bao nhieu gio.
     health_check_interval_hours: int = 12
+    # Clone (booster) kiem thua hon: nghin acc ma kiem moi 12 tieng la nghin request
+    # tu mot IP moi nua ngay.
+    booster_health_interval_hours: int = 24
+    # Moi luot quet kiem toi da tung nay profile (HTTP ~2 giay/acc; quet moi 15 phut).
+    health_sweep_limit: int = 200
     # Sau bao nhieu lan health check that bai lien tiep thi danh dau can nguoi xu ly.
     health_fail_threshold: int = 2
     # Mo trinh duyet an khi kiem tra suc khoe; dang nhap tay thi luon hien.
@@ -64,6 +69,14 @@ class Settings(BaseSettings):
     # Dat False khi can nhin mot job chay bang mat - lan dau chay tren tai khoan that,
     # hoac khi selector khong khop va can biet trang dang hien cai gi.
     headless_jobs: bool = True
+    # So trinh duyet mo song song trong MOT tien trinh worker (~400-600MB RAM + 1 loi CPU
+    # moi cai). Job trinh duyet khong lay duoc cho trong 30 giay thi hen lai vai phut.
+    browser_concurrency: int = 4
+    # So job ARQ chay dong thoi (HTTP + trinh duyet). Trinh duyet bi chan boi
+    # browser_concurrency, nen so nay chi can du cho cac job HTTP nhanh.
+    worker_max_jobs: int = 20
+    # Giu lich su nuoi / su kien phien bao nhieu ngay (nghin acc = hang nghin dong/ngay).
+    activity_retention_days: int = 90
 
     # Dang bai TikTok bang HTTP (7 buoc, khong mo trinh duyet) thay vi TikTok Studio
     # trong Camoufox. Do that 07/09/2026: HTTP ~4 giay qua proxy dan cu, trang Studio
