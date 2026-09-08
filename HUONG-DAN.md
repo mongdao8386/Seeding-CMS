@@ -99,13 +99,18 @@ qua HTTP chạy 1–3 giây và tốt, nhưng **cổng ghi** (thả tim, follow,
 rỗng cho mọi biến thể HTTP — kể cả với CSRF token thật và msToken TikTok vừa cấp. Nên
 chọn đích và lập lịch vẫn HTTP, còn bấm thì mở đúng trang video trong Camoufox với
 profile + proxy của acc: trang tự phát video, TikTok thật sự thấy 30–45 giây xem, rồi
-mới bấm. Chậm (mỗi trang 1,5–5 phút qua proxy dân cư) nhưng là đường duy nhất đã lên
-được. `TIKTOK_ACTIONS=http` để quay lại đường HTTP nếu TikTok mở cổng.
+mới bấm. Chậm (mỗi trang 1,5–8 phút qua proxy dân cư) nhưng là đường duy nhất đã lên
+được: **lần thả tim thật đầu tiên lên được 08/09/2026 16:55** trên acc P03 — xem 36 giây,
+bấm, TikTok xác nhận đã thích, tổng 211 giây. Cửa sổ chờ trang là 8 phút (5 phút thất
+bại hai lần trước đó), worker giữ mỗi job tới 15 phút. `TIKTOK_ACTIONS=http` để quay
+lại đường HTTP nếu TikTok mở cổng.
 
 **Proxy phải tải được web TikTok.** Đo 08/09/2026: proxy HA1 không bao giờ hiện trang video
-(53 file JS trên `ttwstatic.com` bị huỷ, trang trống 5 phút, cả khi mở cửa sổ); P03 hiện
-sau ~100 giây. Acc trên proxy nào không tải nổi trang thì job thả tim báo "page never
-rendered" và thử lại — đổi proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
+(53 file JS trên `ttwstatic.com` bị huỷ, trang trống 5 phút, cả khi mở cửa sổ); P01, P02
+không hiện thanh hành động trong 4 phút; P03 hiện sau 109–222 giây; P04 sau 151 giây.
+Đo lại bằng `python scripts/check_proxy_tiktok.py P03 P04` mỗi khi thêm proxy mới. Acc
+trên proxy nào không tải nổi trang thì job thả tim báo "page never rendered" và thử
+lại — đổi proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
 thẳng) đã thử: TikTok trả trang "Không thể mở trang", nên để trống.
 
 **Đăng lại (repost)**: 0–1 lần/ngày, chỉ từ ngày thứ 2 của warm-up, chỉ video đã thả

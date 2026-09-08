@@ -34,9 +34,10 @@ from seeding.platforms.tiktok.web import ORIGIN
 
 log = structlog.get_logger(__name__)
 
-# Trang video qua proxy dan cu: do that 90-300 giay. 5 phut la con so do duoc, khong
-# phai du phong.
-GOTO_TIMEOUT_MS = 300_000
+# Trang video qua proxy dan cu: do that 08/09/2026 tren P03 - thanh hanh dong ve sau 109s,
+# 222s, va co lan qua 300s; lan tha tim len duoc mat 211s tong. 8 phut la con so do duoc,
+# khong phai du phong. Worker: job_timeout phai lon hon con so nay.
+GOTO_TIMEOUT_MS = 480_000
 
 
 @dataclass(frozen=True, slots=True)

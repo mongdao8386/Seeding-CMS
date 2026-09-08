@@ -76,7 +76,9 @@ class WorkerSettings:
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_jobs = 5
-    job_timeout = 300
+    # Mot job trinh duyet TikTok qua proxy dan cu co the mat 8-9 phut (cho thanh hanh dong
+    # toi 480s + xem 45s). 300s se giet job dung luc no sap bam.
+    job_timeout = 900
 
     @staticmethod
     async def on_startup(ctx: dict) -> None:
