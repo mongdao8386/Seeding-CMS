@@ -178,6 +178,24 @@ class RedditClient:
 
         return parse_feed(await self._run(_hot))
 
+    async def search(self, keyword: str, count: int = 12) -> list[FeedItem]:
+        def _search():
+            return list(
+                self.reddit.subreddit("all").search(
+                    keyword, sort="hot", time_filter="week", limit=count
+                )
+            )
+
+        return parse_feed(await self._run(_search))
+
+    async def watch(self, submission_id: str) -> None:
+        """Mo bai (doc title) - buoc "xem" truoc khi upvote / binh luan."""
+
+        def _open():
+            return self.reddit.submission(submission_id).title
+
+        await self._run(_open)
+
     async def me(self):
         return await self._run(lambda: self.reddit.user.me())
 

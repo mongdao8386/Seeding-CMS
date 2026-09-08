@@ -67,9 +67,31 @@ trong ngày: 4–8 thả tim, 1–3 follow creator, 0–2 bình luận (ngày đ
 luận). Bình luận chỉ vào video đã thả tim, sau ít nhất 8 phút, câu lấy từ bộ tiếng Việt
 đời thường trong `platforms/tiktok/interact.py`.
 
+**Xem trước, bấm sau.** Mỗi lần thả tim, worker mở trang video (như trình duyệt làm) rồi
+**chờ 30–45 giây** mới bấm tim; follow thì mở trang cá nhân, xem 10–20 giây; bình luận
+mở lại video, 20–40 giây rồi mới gõ; đăng lại 8–20 giây. Không có gì được bấm ngay giây
+đầu tiên sau khi đọc feed — đó là nhịp của máy. Thời gian xem nằm trong từng job
+(`duration_seconds`), nhìn được ở dòng thời gian.
+
+**Đăng lại (repost)**: 0–1 lần/ngày, chỉ từ ngày thứ 2 của warm-up, chỉ video đã thả
+tim, xem lại 30–45 giây, sau thả tim ít nhất 3 phút, và không trùng video đã bình luận.
+TikTok đi qua endpoint Repost của trang web (**chưa kiểm chứng trên acc thật**), X là
+retweet; Instagram và Reddit không có repost.
+
+**Đích lấy từ đâu.** Feed của chính acc, **cộng tìm kiếm theo từ khoá**: đặt
+`WARM_KEYWORDS=làm đẹp, du lịch, ẩm thực` trong `.env` (và/hoặc chủ đề của persona). Mỗi
+lần lập lịch chọn ngẫu nhiên 1–2 từ khoá, trộn kết quả tìm với feed, bỏ trùng, rồi mới
+rải lịch. TikTok tìm qua trang tìm kiếm, Instagram theo hashtag, X theo search, Reddit
+theo r/all. Không có từ khoá thì chỉ lấy từ feed.
+
+**Bình luận khi nuôi chỉ là sticker** (`WARM_COMMENT_STYLE=sticker`, mặc định): TikTok
+dùng sticker riêng của TikTok (`[loveface]`, `[laughwithtears]`…), nền tảng khác dùng
+emoji; 1–3 cái, không chữ. Muốn câu chữ: `text`; trộn: `mixed`. Chatbot trả lời bình
+luận dưới bài của mình vẫn dùng chữ — đó là trả lời người, không phải nuôi.
+
 Nhìn ở đâu: **Tổng quan** có dòng "hôm nay: x/y thả tim · follow · bình luận"; bấm vào một
-tài khoản thấy **dòng thời gian** — đăng bài và từng lần thả tim / follow / bình luận,
-cái nào xong, cái nào hỏng.
+tài khoản thấy **dòng thời gian** — đăng bài và từng lần thả tim / follow / bình luận /
+đăng lại, cái nào xong, cái nào hỏng.
 
 Tắt bằng `TIKTOK_INTERACT_VIA_HTTP=false`. Thả tim và follow được thử lại khi không rõ
 kết quả; bình luận thì không — vào "cần bạn".

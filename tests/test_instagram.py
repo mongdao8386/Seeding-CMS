@@ -142,6 +142,9 @@ class _FakeIG:
     async def __aexit__(self, *exc):
         return None
 
+    async def watch(self, pk):
+        _FakeIG.calls.append(("watch", pk))
+
     async def like(self, pk):
         _FakeIG.calls.append(("like", pk))
         return igc.ActionResult(True, "ok")
@@ -157,6 +160,10 @@ class _FakeIG:
     async def follow(self, user_id):
         _FakeIG.calls.append(("follow", user_id))
         return igc.ActionResult(True, "ok")
+
+
+async def _no_sleep(_seconds):
+    return None
 
 
 class _NoSession:
@@ -182,6 +189,7 @@ async def test_like_and_comment_use_the_media_pk_from_the_code():
         _profile(),
         _job(ActivityKind.ENGAGE, f"https://www.instagram.com/reel/{code}/"),
         client_factory=_FakeIG,
+        sleep=_no_sleep,
     )
     assert r.ok
     r = await ii.run(
@@ -192,8 +200,10 @@ async def test_like_and_comment_use_the_media_pk_from_the_code():
         rng=random.Random(3),
     )
     assert r.ok
-    assert _FakeIG.calls[0] == ("like", igc.pk_from_code(code))
-    assert _FakeIG.calls[1][:2] == ("comment", igc.pk_from_code(code)) and _FakeIG.calls[1][2]
+    pk = igc.pk_from_code(code)
+    assert _FakeIG.calls[0] == ("watch", pk) and _FakeIG.calls[1] == ("like", pk)
+    assert _FakeIG.calls[2] == ("watch", pk)
+    assert _FakeIG.calls[3][:2] == ("comment", pk) and _FakeIG.calls[3][2]
 
 
 async def test_follow_resolves_the_handle_first():
@@ -203,6 +213,7 @@ async def test_follow_resolves_the_handle_first():
         _profile(),
         _job(ActivityKind.FOLLOW, "https://www.instagram.com/some.one/"),
         client_factory=_FakeIG,
+        sleep=_no_sleep,
     )
     assert r.ok
     assert _FakeIG.calls == [("user_id", "some.one"), ("follow", "42")]
@@ -216,6 +227,7 @@ async def test_refuses_without_proxy_and_without_media():
         p,
         _job(ActivityKind.ENGAGE, "https://www.instagram.com/reel/AAA/"),
         client_factory=_FakeIG,
+        sleep=_no_sleep,
     )
     assert not r.ok and "proxy" in r.detail
     r = await ii.run(
@@ -223,6 +235,7 @@ async def test_refuses_without_proxy_and_without_media():
         _profile(),
         _job(ActivityKind.ENGAGE, "https://www.instagram.com/some.one/"),
         client_factory=_FakeIG,
+        sleep=_no_sleep,
     )
     assert not r.ok and "no media url" in r.detail
 

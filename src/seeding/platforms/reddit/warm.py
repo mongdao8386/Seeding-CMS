@@ -55,6 +55,7 @@ async def plan_all(session: AsyncSession, *, day: date | None = None) -> int:
                     profile_url=profile_url,
                     day=day,
                     min_views=MIN_SCORE,
+                    keywords=await outreach.keywords_for(session, account),
                 )
             )
         except Exception as exc:

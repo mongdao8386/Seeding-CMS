@@ -429,3 +429,5 @@ class SettingsOut(BaseModel):
     chatbot_max_per_hour: int
     chatbot_interval_minutes: int
     chatbot_last: dict | None = None
+    warm_comment_style: str = "sticker"
+    warm_keywords: list[str] = []

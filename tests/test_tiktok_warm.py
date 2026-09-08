@@ -108,3 +108,35 @@ def test_no_targets_means_no_jobs():
         )
         == []
     )
+
+
+def test_watch_time_and_reposts():
+    """Tha tim mang 30-45 giay xem; dang lai chi video da tha tim, sau tha tim >= 3 phut,
+    va khong co o ngay 0-1 cua warm-up."""
+    day = datetime(2026, 9, 9, tzinfo=UTC).date()
+    window = (datetime(2026, 9, 9, 0, 0, tzinfo=UTC), datetime(2026, 9, 9, 16, 0, tzinfo=UTC))
+    targets = [_item("c1", "10"), _item("c2", "20"), _item("c3", "30")]
+    jobs = outreach.build_jobs(
+        _account(3),
+        targets,
+        outreach.Budget(likes=3, follows=1, comments=1, reposts=1),
+        day=day,
+        window=window,
+        rng=random.Random(5),
+    )
+    likes = {j.target_url: j for j in jobs if j.kind is ActivityKind.ENGAGE}
+    for j in likes.values():
+        assert 30 <= j.duration_seconds <= 45
+    reposts = [j for j in jobs if j.kind is ActivityKind.REPOST]
+    comments = [j for j in jobs if j.kind is ActivityKind.COMMENT]
+    assert len(reposts) == 1 and reposts[0].target_url in likes
+    assert (
+        reposts[0].scheduled_at
+        >= likes[reposts[0].target_url].scheduled_at + outreach.REPOST_AFTER_LIKE
+    )
+    assert reposts[0].target_url != comments[0].target_url, (
+        "khong vua binh luan vua dang lai mot video"
+    )
+    assert outreach.budget_for(_account(0), datetime.now(UTC), random.Random(1)).reposts == 0
+    assert outreach.budget_for(_account(1), datetime.now(UTC), random.Random(1)).reposts == 0
+    assert 0 <= outreach.budget_for(_account(5), datetime.now(UTC), random.Random(1)).reposts <= 1

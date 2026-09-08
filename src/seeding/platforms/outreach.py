@@ -45,6 +45,8 @@ log = structlog.get_logger(__name__)
 LIKES_PER_DAY = (4, 8)
 FOLLOWS_PER_DAY = (1, 3)
 COMMENTS_PER_DAY = (0, 2)
+# Dang lai (repost) hiem hon: nguoi that thinh thoang moi lam, va chi tu ngay thu 2.
+REPOSTS_PER_DAY = (0, 1)
 
 # Bo qua video qua nho (khong phai xu huong) - va khong follow creator qua lon: mot tai
 # khoan moi follow toan nguoi 10 trieu follower cung la mot mau hinh.
@@ -54,12 +56,22 @@ FEED_COUNT = 24
 # Binh luan di SAU tha tim cung video it nhat tung nay - nguoi that xem, tha tim, roi
 # moi go. Va khong bao gio binh luan video minh chua tha tim.
 COMMENT_AFTER_LIKE = timedelta(minutes=8)
+REPOST_AFTER_LIKE = timedelta(minutes=3)
 
+# Thoi gian XEM truoc khi hanh dong (giay). Runner mo trang video / trang ca nhan roi
+# cho dung tung nay moi bam. Tha tim sau 30-45 giay xem la nhip nguoi that; tha tim ngay
+# giay dau tien sau khi doc feed la nhip cua may.
 _DURATION = {
-    ActivityKind.ENGAGE: (30, 90),
-    ActivityKind.FOLLOW: (40, 120),
-    ActivityKind.COMMENT: (60, 180),
+    ActivityKind.ENGAGE: (30, 45),
+    ActivityKind.FOLLOW: (10, 20),
+    ActivityKind.COMMENT: (20, 40),
+    ActivityKind.REPOST: (30, 45),
 }
+
+
+def watch_seconds(job: ActivityJob) -> int:
+    """Bao lau thi bam. Job cu (truoc khi co xem) mang 90 giay - cat xuong 60."""
+    return max(5, min(int(job.duration_seconds or 30), 60))
 
 
 class Target(Protocol):
@@ -80,17 +92,20 @@ class Budget:
     likes: int
     follows: int
     comments: int
+    reposts: int = 0
 
 
 def budget_for(account: Account, now: datetime, rng: random.Random) -> Budget:
-    """Ngan sach hom nay. Ngay 0 cua warm-up: mot nua, va khong binh luan."""
+    """Ngan sach hom nay. Ngay 0 cua warm-up: mot nua, khong binh luan, khong dang lai;
+    ngay 1 chua dang lai."""
     day = (now - account.warmup_started_at).days if account.warmup_started_at else 0
     likes = rng.randint(*LIKES_PER_DAY)
     follows = rng.randint(*FOLLOWS_PER_DAY)
     comments = rng.randint(*COMMENTS_PER_DAY)
+    reposts = rng.randint(*REPOSTS_PER_DAY)
     if day <= 0:
-        return Budget(max(1, likes // 2), max(0, follows // 2), 0)
-    return Budget(likes, follows, min(comments, likes))
+        return Budget(max(1, likes // 2), max(0, follows // 2), 0, 0)
+    return Budget(likes, follows, min(comments, likes), min(reposts, likes) if day >= 2 else 0)
 
 
 def pick_targets(
@@ -99,8 +114,12 @@ def pick_targets(
     """Loc feed thanh danh sach dich: bo tai khoan cua minh, bo video nho, moi creator
     mot video, xao thu tu. `min_views` la nguong "dang len" - Reddit do bang diem."""
     seen: set[str] = set()
+    seen_items: set[str] = set()
     out: list = []
     for it in items:
+        if it.item_id in seen_items:
+            continue
+        seen_items.add(it.item_id)
         if it.author_handle in own_handles or it.author_handle in seen:
             continue
         if it.views < min_views:
@@ -111,6 +130,31 @@ def pick_targets(
     return out
 
 
+def keywords_from(interests: list | None, extra: str | None) -> list[str]:
+    """Chu de cua persona + WARM_KEYWORDS (dau phay), bo trung, giu thu tu."""
+    out: list[str] = []
+    for raw in list(interests or []) + str(extra or "").split(","):
+        kw = str(raw).strip()
+        if kw and kw.lower() not in {o.lower() for o in out}:
+            out.append(kw)
+    return out
+
+
+async def gather_targets(src, rng: random.Random, keywords: list[str]) -> list:
+    """Feed cua tai khoan + ket qua tim kiem theo 1-2 tu khoa (neu nguon biet tim).
+    Tim hong (endpoint doi, tu khoa la) thi van con feed - khong lam hong ca ngay."""
+    items = list(await src.feed(FEED_COUNT))
+    if keywords and hasattr(src, "search"):
+        for kw in rng.sample(keywords, min(2, len(keywords))):
+            try:
+                items += list(await src.search(kw, FEED_COUNT // 2))
+            except Exception as exc:
+                log.warning(
+                    "outreach.search_failed", keyword=kw, error=f"{type(exc).__name__}: {exc}"
+                )
+    return items
+
+
 async def count_outward_for_day(session: AsyncSession, account_id: uuid.UUID, day: date) -> int:
     start = datetime.combine(day, datetime.min.time(), tzinfo=UTC)
     stmt = (
@@ -119,7 +163,14 @@ async def count_outward_for_day(session: AsyncSession, account_id: uuid.UUID, da
         .where(
             ActivityJob.account_id == account_id,
             ActivityJob.target_account_id.is_(None),
-            ActivityJob.kind.in_([ActivityKind.ENGAGE, ActivityKind.FOLLOW, ActivityKind.COMMENT]),
+            ActivityJob.kind.in_(
+                [
+                    ActivityKind.ENGAGE,
+                    ActivityKind.FOLLOW,
+                    ActivityKind.COMMENT,
+                    ActivityKind.REPOST,
+                ]
+            ),
             ActivityJob.scheduled_at >= start,
             ActivityJob.scheduled_at < start + timedelta(days=1),
         )
@@ -146,8 +197,11 @@ def build_jobs(
     liked = targets[: budget.likes]
     followed = targets[: budget.follows]  # follow creator cua video da tha tim
     commented = liked[: budget.comments]
+    # Dang lai video khac video da binh luan, neu du dich: mot video vua binh luan vua
+    # dang lai trong cung buoi la hoi nhieu cho mot nguoi la.
+    reposted = (liked[budget.comments :] or liked)[: budget.reposts]
 
-    total = len(liked) + len(followed) + len(commented)
+    total = len(liked) + len(followed) + len(commented) + len(reposted)
     start, end = window
     slots = activity_mod._slots(day, total, rng, start, end)
     jobs: list[ActivityJob] = []
@@ -175,6 +229,10 @@ def build_jobs(
         when = max(slots[i], when_liked[it.item_id] + COMMENT_AFTER_LIKE)
         jobs.append(make(ActivityKind.COMMENT, it.url, when))
         i += 1
+    for it in reposted:
+        when = max(slots[i], when_liked[it.item_id] + REPOST_AFTER_LIKE)
+        jobs.append(make(ActivityKind.REPOST, it.url, when))
+        i += 1
     return jobs
 
 
@@ -189,9 +247,11 @@ async def plan_for_account(
     now: datetime | None = None,
     rng: random.Random | None = None,
     min_views: int = MIN_VIEWS,
+    keywords: list[str] | None = None,
 ) -> list[ActivityJob]:
     """Lich huong ra ngoai cho mot tai khoan trong mot ngay. Da co thi khong lam lai.
-    `profile` co the None voi nen tang di bang API (Reddit)."""
+    `profile` co the None voi nen tang di bang API (Reddit). `keywords` = tu khoa tim
+    kiem de tron them dich ngoai feed."""
     now = now or datetime.now(UTC)
     day = day or now.date()
     rng = rng or random.Random(f"outreach:{account.id}:{day.isoformat()}")
@@ -205,7 +265,7 @@ async def plan_for_account(
         .all()
     )
     async with source_factory(profile) as src:
-        items = await src.feed(FEED_COUNT)
+        items = await gather_targets(src, rng, keywords or [])
     targets = pick_targets(items, own_handles=own, rng=rng, min_views=min_views)
     if not targets:
         log.warning("outreach.no_targets", handle=account.handle, feed=len(items))
@@ -271,6 +331,7 @@ async def plan_platform(
                     source_factory=source_factory,
                     profile_url=profile_url,
                     day=day,
+                    keywords=await keywords_for(session, account),
                 )
             )
         except Exception as exc:
@@ -285,11 +346,23 @@ async def plan_platform(
     return total
 
 
+async def keywords_for(session: AsyncSession, account: Account) -> list[str]:
+    """Tu khoa cua tai khoan: chu de persona + WARM_KEYWORDS."""
+    from seeding.config import get_settings
+    from seeding.domain.models import Persona
+
+    interests = (
+        await session.execute(select(Persona.interests).where(Persona.id == account.persona_id))
+    ).scalar_one_or_none()
+    return keywords_from(interests, get_settings().warm_keywords)
+
+
 def is_outward(job: ActivityJob) -> bool:
     return job.target_account_id is None and job.kind in {
         ActivityKind.ENGAGE,
         ActivityKind.FOLLOW,
         ActivityKind.COMMENT,
+        ActivityKind.REPOST,
     }
 
 

@@ -283,6 +283,8 @@ export type Settings = {
   chatbot_max_per_hour: number;
   chatbot_interval_minutes: number;
   chatbot_last: { at: string; handle: string; replier: string; replied: number; dm_replied: number; stopped: string | null } | null;
+  warm_comment_style: string;
+  warm_keywords: string[];
 };
 
 export type Post = {

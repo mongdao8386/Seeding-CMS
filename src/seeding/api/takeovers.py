@@ -118,6 +118,8 @@ async def settings_out() -> SettingsOut:
         chatbot_max_per_hour=st.chatbot_max_per_hour,
         chatbot_interval_minutes=st.chatbot_interval_minutes,
         chatbot_last=await flags.get_flag("chatbot:last"),
+        warm_comment_style=st.warm_comment_style,
+        warm_keywords=[k.strip() for k in st.warm_keywords.split(",") if k.strip()],
     )
 
 

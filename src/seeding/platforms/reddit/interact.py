@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 from urllib.parse import urlparse
@@ -11,9 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.browser.checkpoints import Checkpoint, CheckpointKind
 from seeding.config import get_settings
-from seeding.content.comments import comment_text
+from seeding.content.comments import warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
+from seeding.platforms.outreach import watch_seconds
 from seeding.platforms.reddit.client import ActionResult, RedditClient, classify_exc
 
 log = structlog.get_logger(__name__)
@@ -55,6 +57,7 @@ async def run(
     *,
     client_factory=RedditClient,
     rng: random.Random | None = None,
+    sleep=asyncio.sleep,
 ) -> InteractResult:
     handle, sid = parse_target(job.target_url)
     if job.kind is ActivityKind.FOLLOW and job.target_account_id is not None:
@@ -69,12 +72,16 @@ async def run(
 
     try:
         async with client_factory(job.account, profile) as rd:
-            if job.kind is ActivityKind.ENGAGE:
-                res = await rd.like(sid)
-            elif job.kind is ActivityKind.COMMENT:
-                res = await rd.comment(sid, comment_text(job.id, rng))
-            else:
+            if job.kind is ActivityKind.FOLLOW:
+                await sleep(watch_seconds(job))
                 res = await rd.follow(handle)
+            else:
+                await rd.watch(sid)
+                await sleep(watch_seconds(job))
+                if job.kind is ActivityKind.ENGAGE:
+                    res = await rd.like(sid)
+                else:
+                    res = await rd.comment(sid, warm_comment(job.id, "reddit", rng))
     except Exception as exc:
         r = _to_result(classify_exc(exc, idempotent=True))
         log.warning("reddit_interact.failed", job=str(job.id), error=r.detail)

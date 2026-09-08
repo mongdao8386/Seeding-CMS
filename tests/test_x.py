@@ -132,8 +132,12 @@ def test_exceptions_are_classified(exc, idempotent, expect):
 
 def test_reply_text_comes_from_the_pool_with_a_suffix():
     jid = uuid.uuid4()
-    text = xi.reply_text(jid)
-    assert text == xi.reply_text(jid)
+    # Mac dinh (sticker): chi emoji, khong chu, khong duoi.
+    sticker = xi.reply_text(jid)
+    assert sticker == xi.reply_text(jid) and not any(ch.isalnum() for ch in sticker)
+    # Kieu chu: cau tu bo chung + mot duoi nho de X khong chan trung.
+    text = xi.reply_text(jid, style="text")
+    assert text == xi.reply_text(jid, style="text")
     assert any(text.startswith(c) for c in COMMENTS)
     assert text[len(next(c for c in COMMENTS if text.startswith(c))) :] in xi.SUFFIXES
 
@@ -165,6 +169,13 @@ class _FakeX:
     async def __aexit__(self, *exc):
         return None
 
+    async def watch(self, tid):
+        _FakeX.calls.append(("watch", tid))
+
+    async def repost(self, tid):
+        _FakeX.calls.append(("repost", tid))
+        return xc.ActionResult(True, "ok")
+
     async def like(self, tid):
         _FakeX.calls.append(("like", tid))
         return xc.ActionResult(True, "ok")
@@ -180,6 +191,10 @@ class _FakeX:
     async def follow(self, user_id):
         _FakeX.calls.append(("follow", user_id))
         return xc.ActionResult(True, "ok")
+
+
+async def _no_sleep(_seconds):
+    return None
 
 
 class _NoSession:
@@ -202,7 +217,11 @@ async def test_like_comment_follow_call_the_right_thing():
     url = "https://x.com/creator/status/777"
     assert (
         await xi.run(
-            _NoSession(), _profile(), _job(ActivityKind.ENGAGE, url), client_factory=_FakeX
+            _NoSession(),
+            _profile(),
+            _job(ActivityKind.ENGAGE, url),
+            client_factory=_FakeX,
+            sleep=_no_sleep,
         )
     ).ok
     assert (
@@ -212,6 +231,7 @@ async def test_like_comment_follow_call_the_right_thing():
             _job(ActivityKind.COMMENT, url),
             client_factory=_FakeX,
             rng=random.Random(1),
+            sleep=_no_sleep,
         )
     ).ok
     assert (
@@ -220,11 +240,24 @@ async def test_like_comment_follow_call_the_right_thing():
             _profile(),
             _job(ActivityKind.FOLLOW, "https://x.com/creator"),
             client_factory=_FakeX,
+            sleep=_no_sleep,
         )
     ).ok
-    assert _FakeX.calls[0] == ("like", "777")
-    assert _FakeX.calls[1][:2] == ("comment", "777") and _FakeX.calls[1][2]
-    assert _FakeX.calls[2:] == [("user_id", "creator"), ("follow", "42")]
+    assert _FakeX.calls[0] == ("watch", "777") and _FakeX.calls[1] == ("like", "777")
+    assert _FakeX.calls[2] == ("watch", "777")
+    assert _FakeX.calls[3][:2] == ("comment", "777") and _FakeX.calls[3][2]
+    assert _FakeX.calls[4:] == [("user_id", "creator"), ("follow", "42")]
+    _FakeX.calls.clear()
+    assert (
+        await xi.run(
+            _NoSession(),
+            _profile(),
+            _job(ActivityKind.REPOST, url),
+            client_factory=_FakeX,
+            sleep=_no_sleep,
+        )
+    ).ok
+    assert _FakeX.calls == [("watch", "777"), ("repost", "777")]
 
 
 async def test_library_trouble_at_login_is_a_retry_not_a_checkpoint():
@@ -235,6 +268,7 @@ async def test_library_trouble_at_login_is_a_retry_not_a_checkpoint():
             _profile(),
             _job(ActivityKind.ENGAGE, "https://x.com/creator/status/1"),
             client_factory=_FakeX,
+            sleep=_no_sleep,
         )
     finally:
         _FakeX.raise_on_enter = None

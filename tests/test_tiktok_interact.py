@@ -53,6 +53,14 @@ class _FakeWeb:
     async def __aexit__(self, *exc):
         return None
 
+    async def item(self, item_id):
+        _FakeWeb.calls.append(("item", item_id))
+        return {"itemInfo": {}}
+
+    async def repost(self, item_id):
+        _FakeWeb.calls.append(("repost", item_id))
+        return ActionResult(True, "ok")
+
     async def like(self, item_id):
         _FakeWeb.calls.append(("like", item_id))
         return ActionResult(True, "ok")
@@ -87,14 +95,23 @@ def _job(kind, url) -> ActivityJob:
     )
 
 
-async def test_like_follow_comment_dispatch():
+WAITS: list[float] = []
+
+
+async def _sleep(seconds):
+    WAITS.append(seconds)
+
+
+async def test_like_follow_comment_dispatch_watches_first():
     _FakeWeb.calls.clear()
+    WAITS.clear()
     p = _profile()
     r = await ti.run(
         _NoSession(),
         p,
         _job(ActivityKind.ENGAGE, "https://www.tiktok.com/@c/video/11"),
         web_factory=_FakeWeb,
+        sleep=_sleep,
     )
     assert r.ok
     r = await ti.run(
@@ -102,6 +119,7 @@ async def test_like_follow_comment_dispatch():
         p,
         _job(ActivityKind.FOLLOW, "https://www.tiktok.com/@c"),
         web_factory=_FakeWeb,
+        sleep=_sleep,
     )
     assert r.ok
     r = await ti.run(
@@ -109,12 +127,29 @@ async def test_like_follow_comment_dispatch():
         p,
         _job(ActivityKind.COMMENT, "https://www.tiktok.com/@c/video/11"),
         web_factory=_FakeWeb,
+        sleep=_sleep,
     )
     assert r.ok
     kinds = [c[0] for c in _FakeWeb.calls]
-    assert kinds == ["like", "user", "follow", "comment"]
-    assert _FakeWeb.calls[2] == ("follow", "9", "S")
-    assert _FakeWeb.calls[3][2] in ti.COMMENTS
+    # Mo trang truoc, xem, roi moi bam - khong bao gio bam ngay.
+    assert kinds == ["item", "like", "user", "follow", "item", "comment"]
+    assert _FakeWeb.calls[3] == ("follow", "9", "S")
+    # Binh luan nuoi mac dinh la sticker TikTok ([ten]), khong chu.
+    assert _FakeWeb.calls[5][2].startswith("[") and _FakeWeb.calls[5][2].endswith("]")
+    assert WAITS == [30, 30, 30], "cho dung duration_seconds cua job truoc moi hanh dong"
+
+
+async def test_repost_opens_the_video_then_reposts():
+    _FakeWeb.calls.clear()
+    WAITS.clear()
+    r = await ti.run(
+        _NoSession(),
+        _profile(),
+        _job(ActivityKind.REPOST, "https://www.tiktok.com/@c/video/1"),
+        web_factory=_FakeWeb,
+        sleep=_sleep,
+    )
+    assert r.ok and [c[0] for c in _FakeWeb.calls] == ["item", "repost"] and WAITS == [30]
 
 
 async def test_missing_target_is_a_clear_failure_without_touching_tiktok():
@@ -126,16 +161,6 @@ async def test_missing_target_is_a_clear_failure_without_touching_tiktok():
         web_factory=_FakeWeb,
     )
     assert not r.ok and "no video url" in r.detail and _FakeWeb.calls == []
-
-
-async def test_repost_over_http_is_refused_explicitly():
-    r = await ti.run(
-        _NoSession(),
-        _profile(),
-        _job(ActivityKind.REPOST, "https://www.tiktok.com/@c/video/1"),
-        web_factory=_FakeWeb,
-    )
-    assert not r.ok and "not implemented" in r.detail
 
 
 async def test_profile_without_proxy_is_refused():

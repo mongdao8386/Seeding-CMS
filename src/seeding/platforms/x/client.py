@@ -192,6 +192,25 @@ class XClient:
         assert self.client is not None
         return parse_feed(list(await self.client.get_timeline(count)))
 
+    async def watch(self, tweet_id: str) -> None:
+        """Mo bai (TweetDetail) - buoc "xem" truoc khi tha tim / tra loi / dang lai."""
+        assert self.client is not None
+        await self.client.get_tweet_by_id(tweet_id)
+
+    async def repost(self, tweet_id: str) -> ActionResult:
+        assert self.client is not None
+        try:
+            await self.client.retweet(tweet_id)
+        except Exception as exc:
+            if "already" in str(exc).lower() or "327" in str(exc):
+                return ActionResult(True, "already reposted")
+            return classify_exc(exc, idempotent=True)
+        return ActionResult(True, "ok")
+
+    async def search(self, keyword: str, count: int = 12) -> list[FeedItem]:
+        assert self.client is not None
+        return parse_feed(list(await self.client.search_tweet(keyword, "Top", count)))
+
     async def user_id(self, handle: str) -> str:
         assert self.client is not None
         user = await self.client.get_user_by_screen_name(handle)

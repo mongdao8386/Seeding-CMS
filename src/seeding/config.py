@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     chatbot_model: str = "claude-sonnet-5"
     anthropic_api_key: str = ""
 
+    # Nuoi: binh luan kieu gi - sticker (chi emoji, mac dinh), text (cau tieng Viet), mixed.
+    warm_comment_style: str = "sticker"
+    # Nuoi: tu khoa tim kiem de chon dich (cach nhau bang dau phay), cong them chu de
+    # (interests) cua persona. Trong = chi lay tu For You.
+    warm_keywords: str = ""
+
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic
     alert_kind: str = "generic"

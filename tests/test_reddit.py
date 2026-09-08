@@ -103,6 +103,9 @@ class _FakeRd:
     async def __aexit__(self, *exc):
         return None
 
+    async def watch(self, sid):
+        _FakeRd.calls.append(("watch", sid))
+
     async def like(self, sid):
         _FakeRd.calls.append(("like", sid))
         return rc.ActionResult(True, "ok")
@@ -130,6 +133,10 @@ class _FakeRd:
         _FakeRd.calls.append(("edit", sid, body))
 
 
+async def _no_sleep(_seconds):
+    return None
+
+
 class _NoSession:
     async def get(self, model, key):
         return None
@@ -145,7 +152,13 @@ async def test_interact_calls_the_right_thing():
     _FakeRd.calls.clear()
     post = "https://www.reddit.com/r/vietnam/comments/1abc2d/t/"
     assert (
-        await ri.run(_NoSession(), None, _job(ActivityKind.ENGAGE, post), client_factory=_FakeRd)
+        await ri.run(
+            _NoSession(),
+            None,
+            _job(ActivityKind.ENGAGE, post),
+            client_factory=_FakeRd,
+            sleep=_no_sleep,
+        )
     ).ok
     assert (
         await ri.run(
@@ -153,6 +166,7 @@ async def test_interact_calls_the_right_thing():
             None,
             _job(ActivityKind.COMMENT, post),
             client_factory=_FakeRd,
+            sleep=_no_sleep,
             rng=random.Random(1),
         )
     ).ok
@@ -162,11 +176,13 @@ async def test_interact_calls_the_right_thing():
             None,
             _job(ActivityKind.FOLLOW, "https://www.reddit.com/user/creator"),
             client_factory=_FakeRd,
+            sleep=_no_sleep,
         )
     ).ok
-    assert _FakeRd.calls[0] == ("like", "1abc2d")
-    assert _FakeRd.calls[1][:2] == ("comment", "1abc2d")
-    assert _FakeRd.calls[2] == ("follow", "creator")
+    assert _FakeRd.calls[0] == ("watch", "1abc2d") and _FakeRd.calls[1] == ("like", "1abc2d")
+    assert _FakeRd.calls[2] == ("watch", "1abc2d")
+    assert _FakeRd.calls[3][:2] == ("comment", "1abc2d")
+    assert _FakeRd.calls[4] == ("follow", "creator")
 
 
 def _account(with_secrets=True) -> Account:

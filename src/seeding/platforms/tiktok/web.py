@@ -148,6 +148,16 @@ def parse_feed(body: dict) -> list[FeedItem]:
     return out
 
 
+def parse_search(body: dict) -> list[FeedItem]:
+    """Body cua search/general/full: {"data": [{"type": 1, "item": {...video...}}, ...]}."""
+    items = [
+        d.get("item")
+        for d in (body.get("data") or [])
+        if isinstance(d, dict) and d.get("type") == 1 and isinstance(d.get("item"), dict)
+    ]
+    return parse_feed({"itemList": items})
+
+
 def classify(body: dict, *, idempotent: bool) -> ActionResult:
     """Doc body cua mot hanh dong thanh ket qua. `idempotent` quyet dinh 'khong ro' la
     thu lai duoc hay phai cho nguoi."""
@@ -298,6 +308,30 @@ class TikTokWeb:
             "uniqueId": str(u.get("uniqueId") or handle),
             "followers": int((info.get("stats") or {}).get("followerCount") or 0),
         }
+
+    async def search(self, keyword: str, count: int = 12) -> list[FeedItem]:
+        """Tim video theo tu khoa - cai trang tim kiem goi. Ket qua cung hinh voi feed."""
+        body = await self._get(
+            "/api/search/general/full/",
+            {
+                "keyword": keyword,
+                "offset": "0",
+                "search_source": "normal_search",
+                "from_page": "search",
+            },
+        )
+        return parse_search(body)[:count]
+
+    async def item(self, item_id: str) -> dict:
+        """Chi tiet mot video - cai trang video goi khi mo. Runner goi truoc khi "xem"."""
+        return await self._get("/api/item/detail/", {"itemId": item_id})
+
+    async def repost(self, item_id: str) -> ActionResult:
+        """Dang lai (repost) mot video. Idempotent. CHUA kiem chung tren tai khoan that:
+        endpoint theo nut Repost cua trang web; sai thi job hong voi body TikTok tra ve."""
+        return await self._post(
+            "/api/repost/item/", {"item_id": item_id, "action_type": "1"}, idempotent=True
+        )
 
     async def posts(self, sec_uid: str, count: int = 10) -> list[FeedItem]:
         """Video cua mot nguoi (dung cho chinh minh: chatbot doc bai cua tai khoan)."""

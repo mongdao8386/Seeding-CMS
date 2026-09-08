@@ -64,7 +64,17 @@ export default function SettingsPage() {
           ) : (
             <p className="text-muted">…</p>
           )}
-          <p className="text-xs text-faint">Thả tim 4–8, follow 1–3, bình luận 0–2 mỗi ngày; ngày đầu một nửa. Chung cho TikTok, Instagram và X — sửa trong platforms/outreach.py.</p>
+          {settings.data && (
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+              <dt className="text-muted">Xem video trước khi thả tim / đăng lại</dt>
+              <dd className="mono">30–45 giây</dd>
+              <dt className="text-muted">Bình luận khi nuôi</dt>
+              <dd className="mono">{settings.data.warm_comment_style === "sticker" ? "chỉ sticker" : settings.data.warm_comment_style === "text" ? "câu chữ" : "trộn"}</dd>
+              <dt className="text-muted">Từ khoá tìm đích (WARM_KEYWORDS)</dt>
+              <dd className="mono truncate">{settings.data.warm_keywords.length ? settings.data.warm_keywords.join(", ") : "chưa có — chỉ lấy từ feed"}</dd>
+            </dl>
+          )}
+          <p className="text-xs text-faint">Thả tim 4–8, follow 1–3, bình luận 0–2, đăng lại 0–1 mỗi ngày; ngày đầu một nửa. Đích = feed của chính acc + tìm theo từ khoá. Chung cho mọi nền tảng — sửa trong platforms/outreach.py.</p>
         </section>
 
         <section className="card flex flex-col gap-3 p-5">

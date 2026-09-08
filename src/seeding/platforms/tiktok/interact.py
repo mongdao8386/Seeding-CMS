@@ -13,6 +13,7 @@ Hai luat giu nguyen tu ban trinh duyet:
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 from urllib.parse import urlparse
@@ -22,10 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.browser.checkpoints import Checkpoint, CheckpointKind
 from seeding.config import get_settings
-from seeding.content.comments import COMMENTS, comment_text
+from seeding.content.comments import COMMENTS, comment_text, warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
-from seeding.platforms.outreach import ensure_proxy_loaded
+from seeding.platforms.outreach import ensure_proxy_loaded, watch_seconds
 from seeding.platforms.tiktok.web import ActionResult, TikTokWeb
 
 log = structlog.get_logger(__name__)
@@ -65,6 +66,7 @@ async def run(
     *,
     web_factory=TikTokWeb,
     rng: random.Random | None = None,
+    sleep=asyncio.sleep,
 ) -> InteractResult:
     await ensure_proxy_loaded(session, profile)
     if profile.proxy is None:
@@ -77,26 +79,32 @@ async def run(
         target = await session.get(Account, job.target_account_id)
         handle = target.handle if target else handle
 
-    if job.kind in (ActivityKind.ENGAGE, ActivityKind.COMMENT) and not item_id:
+    if job.kind in (ActivityKind.ENGAGE, ActivityKind.COMMENT, ActivityKind.REPOST) and not item_id:
         return InteractResult(False, f"{job.kind.value} job has no video url")
     if job.kind is ActivityKind.FOLLOW and not handle:
         return InteractResult(False, "follow job has no target handle")
-    if job.kind is ActivityKind.REPOST:
-        return InteractResult(False, "repost over HTTP is not implemented yet")
 
+    # Xem truoc, bam sau. Mo trang (item detail / user detail) nhu trinh duyet lam, roi
+    # cho dung thoi gian xem cua job (30-45 giay voi tha tim) moi hanh dong.
     try:
         async with web_factory(profile) as tt:
-            if job.kind is ActivityKind.ENGAGE:
-                res = await tt.like(item_id)
-            elif job.kind is ActivityKind.COMMENT:
-                res = await tt.comment(item_id, comment_text(job.id, rng))
-            else:
+            if job.kind is ActivityKind.FOLLOW:
                 user = await tt.user(handle)
                 if not user["id"] or not user["secUid"]:
                     return InteractResult(
                         False, f"could not resolve @{handle} to a user id", retryable=True
                     )
+                await sleep(watch_seconds(job))
                 res = await tt.follow(user["id"], user["secUid"])
+            else:
+                await tt.item(item_id)
+                await sleep(watch_seconds(job))
+                if job.kind is ActivityKind.ENGAGE:
+                    res = await tt.like(item_id)
+                elif job.kind is ActivityKind.COMMENT:
+                    res = await tt.comment(item_id, warm_comment(job.id, "tiktok", rng))
+                else:
+                    res = await tt.repost(item_id)
     except Exception as exc:
         # Signer chet, proxy treo tu dau, feed hong... ha tang, khong phai tai khoan.
         log.warning("tiktok_interact.failed", job=str(job.id), error=f"{type(exc).__name__}: {exc}")

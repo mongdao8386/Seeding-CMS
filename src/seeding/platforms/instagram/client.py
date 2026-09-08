@@ -255,6 +255,21 @@ class InstagramClient:
         assert self.client is not None
         return parse_feed(await self.client.explore_reels(count))
 
+    async def watch(self, media_pk: str) -> None:
+        """Mo trang bai (media_info) - buoc "xem" truoc khi tha tim / binh luan."""
+        assert self.client is not None
+        await self.client.media_info(media_pk)
+
+    async def search(self, keyword: str, count: int = 12) -> list[FeedItem]:
+        """Bai noi bat theo hashtag (tu khoa bo dau, bo khoang trang)."""
+        from seeding.content.identity import strip_accents
+
+        assert self.client is not None
+        tag = "".join(ch for ch in strip_accents(keyword) if ch.isalnum())
+        if not tag:
+            return []
+        return parse_feed(await self.client.hashtag_medias_top(tag, amount=count))
+
     async def user_id(self, username: str) -> str:
         assert self.client is not None
         return str(await self.client.user_id_from_username(username))

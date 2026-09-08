@@ -7,6 +7,7 @@ theo job id de hai lan tra loi gan nhau khong trung nguyen van.
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 from urllib.parse import urlparse
@@ -16,10 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.browser.checkpoints import Checkpoint, CheckpointKind
 from seeding.config import get_settings
-from seeding.content.comments import comment_text
+from seeding.content.comments import COMMENTS, warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
-from seeding.platforms.outreach import ensure_proxy_loaded
+from seeding.platforms.outreach import ensure_proxy_loaded, watch_seconds
 from seeding.platforms.x.client import ActionResult, XClient, classify_exc
 
 log = structlog.get_logger(__name__)
@@ -43,9 +44,13 @@ def parse_target(url: str | None) -> tuple[str | None, str | None]:
     return None, None
 
 
-def reply_text(job_id, rng: random.Random | None = None) -> str:
+def reply_text(job_id, rng: random.Random | None = None, style: str | None = None) -> str:
+    """Sticker thi khong can duoi (emoji khac nhau da khong trung); chu thi ghep duoi."""
     rng = rng or random.Random(f"reply:{job_id}")
-    return comment_text(job_id, rng) + rng.choice(SUFFIXES)
+    text = warm_comment(job_id, "x", rng, style=style)
+    if text in COMMENTS:
+        return text + rng.choice(SUFFIXES)
+    return text
 
 
 def _to_result(res: ActionResult) -> InteractResult:
@@ -70,6 +75,7 @@ async def run(
     *,
     client_factory=XClient,
     rng: random.Random | None = None,
+    sleep=asyncio.sleep,
 ) -> InteractResult:
     await ensure_proxy_loaded(session, profile)
     if profile.proxy is None:
@@ -80,26 +86,33 @@ async def run(
         target = await session.get(Account, job.target_account_id)
         handle = target.handle.lstrip("@") if target else handle
 
-    if job.kind in (ActivityKind.ENGAGE, ActivityKind.COMMENT) and not tweet_id:
+    if (
+        job.kind in (ActivityKind.ENGAGE, ActivityKind.COMMENT, ActivityKind.REPOST)
+        and not tweet_id
+    ):
         return InteractResult(False, f"{job.kind.value} job has no tweet url")
     if job.kind is ActivityKind.FOLLOW and not handle:
         return InteractResult(False, "follow job has no target handle")
-    if job.kind is ActivityKind.REPOST:
-        return InteractResult(False, "repost on x is not implemented")
 
     try:
         async with client_factory(profile) as x:
-            if job.kind is ActivityKind.ENGAGE:
-                res = await x.like(tweet_id)
-            elif job.kind is ActivityKind.COMMENT:
-                res = await x.comment(tweet_id, reply_text(job.id, rng))
-            else:
+            if job.kind is ActivityKind.FOLLOW:
                 user_id = await x.user_id(handle)
                 if not user_id:
                     return InteractResult(
                         False, f"could not resolve @{handle} to a user id", retryable=True
                     )
+                await sleep(watch_seconds(job))
                 res = await x.follow(user_id)
+            else:
+                await x.watch(tweet_id)
+                await sleep(watch_seconds(job))
+                if job.kind is ActivityKind.ENGAGE:
+                    res = await x.like(tweet_id)
+                elif job.kind is ActivityKind.COMMENT:
+                    res = await x.comment(tweet_id, reply_text(job.id, rng))
+                else:
+                    res = await x.repost(tweet_id)
     except Exception as exc:
         r = _to_result(classify_exc(exc, idempotent=True))
         log.warning("x_interact.failed", job=str(job.id), error=r.detail)

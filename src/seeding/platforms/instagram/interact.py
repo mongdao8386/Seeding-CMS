@@ -5,6 +5,7 @@ Cung hop dong ket qua (InteractResult) voi TikTok de worker khong phai biet nen 
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 from urllib.parse import urlparse
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.browser.checkpoints import Checkpoint, CheckpointKind
 from seeding.config import get_settings
-from seeding.content.comments import comment_text
+from seeding.content.comments import warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
 from seeding.platforms.instagram.client import (
@@ -23,7 +24,7 @@ from seeding.platforms.instagram.client import (
     classify_exc,
     pk_from_code,
 )
-from seeding.platforms.outreach import ensure_proxy_loaded
+from seeding.platforms.outreach import ensure_proxy_loaded, watch_seconds
 
 log = structlog.get_logger(__name__)
 
@@ -65,6 +66,7 @@ async def run(
     *,
     client_factory=InstagramClient,
     rng: random.Random | None = None,
+    sleep=asyncio.sleep,
 ) -> InteractResult:
     await ensure_proxy_loaded(session, profile)
     if profile.proxy is None:
@@ -86,17 +88,22 @@ async def run(
 
     try:
         async with client_factory(profile) as ig:
-            if job.kind is ActivityKind.ENGAGE:
-                res = await ig.like(pk_from_code(code))
-            elif job.kind is ActivityKind.COMMENT:
-                res = await ig.comment(pk_from_code(code), comment_text(job.id, rng))
-            else:
+            if job.kind is ActivityKind.FOLLOW:
                 user_id = await ig.user_id(handle)
                 if not user_id:
                     return InteractResult(
                         False, f"could not resolve @{handle} to a user id", retryable=True
                     )
+                await sleep(watch_seconds(job))
                 res = await ig.follow(user_id)
+            else:
+                pk = pk_from_code(code)
+                await ig.watch(pk)
+                await sleep(watch_seconds(job))
+                if job.kind is ActivityKind.ENGAGE:
+                    res = await ig.like(pk)
+                else:
+                    res = await ig.comment(pk, warm_comment(job.id, "instagram", rng))
     except Exception as exc:
         # Dang nhap bang sessionid hong, proxy treo, feed hong... Dang nhap hong la
         # phien chet -> nguoi; con lai la ha tang -> thu lai.
