@@ -14,7 +14,8 @@ import {
   type Platform,
   type Slot,
 } from "@/lib/api";
-import { Empty, ErrorNote, PLATFORM_LABEL, PageTitle, useLoad } from "@/components/ui";
+import { PublishedPosts } from "@/components/posts";
+import { Empty, ErrorNote, PLATFORM_LABEL, PLATFORMS, PageTitle, useLoad } from "@/components/ui";
 
 const DAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const DAY_LONG = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
@@ -99,7 +100,7 @@ export default function ContentPage() {
         sub={`Giờ ${slots.data ? "địa phương" : ""} · kéo thẻ bài sang ngày khác để dời, nó tự bám vào giờ vàng`}
         action={
           <div className="flex gap-1.5 text-sm">
-            {(["tiktok", "instagram", "x"] as Platform[]).map((p) => (
+            {PLATFORMS.map((p) => (
               <button
                 key={p}
                 className={"rounded-lg px-2.5 py-1.5 " + (platform === p ? "bg-soft font-medium text-ink" : "text-muted")}
@@ -166,6 +167,10 @@ export default function ContentPage() {
             <span className="ml-auto">Chưa có mốc giờ vàng cho ngày nào? Đặt ở Cài đặt.</span>
           </div>
         </section>
+      </div>
+
+      <div className="mt-6">
+        <PublishedPosts />
       </div>
 
       {schedulingFor && (

@@ -70,5 +70,8 @@ devices. Thêm lại khi cần, không phải vì đã có.
 | 5 | Instagram qua aiograpi: đăng ảnh/Reel, nuôi từ Reels đề xuất, kiểm phiên HTTP | Tab Instagram dùng được y như TikTok |
 | 6 | X qua twifork: đăng chữ/media, nuôi từ For You, kiểm phiên; thư viện lệch báo riêng, không đổ lên tài khoản | Tab X dùng được; Cài đặt báo khi twifork lệch |
 | 7 | Đổi username/tên/avatar từ dashboard (Instagram, X; TikTok làm tay); chatbot chưa định nghĩa | Thẻ Đổi danh tính trong Chi tiết tài khoản |
+| 8 | Bài đã đăng: liệt kê, xoá trên nền tảng (TikTok/IG/X/Reddit), sửa chú thích (IG/Reddit) | Mục Đã đăng trong Nội dung & Lịch |
+| 9 | Reddit (API) và Facebook (trình duyệt) trở lại: đăng, nuôi, giờ vàng đủ 5 nền tảng | Tab Reddit/Facebook dùng được |
+| 10 | Chatbot: tự trả lời bình luận dưới bài và tin nhắn (IG, X; TikTok chỉ bình luận) | Thẻ Chatbot ở Cài đặt, trả lời hiện ở dòng thời gian |
 
 Mỗi phần: code + test + một đoạn trong `HUONG-DAN.md`, rồi commit.

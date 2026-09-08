@@ -162,6 +162,19 @@ phút, kết quả hiện trên dòng thời gian; username mới thay luôn han
 **Chatbot** trong kế hoạch chưa có định nghĩa (trả lời bình luận? nhắn tin? trò chuyện
 với người vận hành?) nên chưa làm — cần nói rõ muốn gì trước.
 
+## 3g. Bài đã đăng: xoá, sửa (phần 8)
+
+Cuối màn hình **Nội dung & Lịch** có mục **Đã đăng**: mọi bài đã lên (link mở bài, ai
+đăng, lúc nào). Mỗi bài có hai nút, worker làm trong 1–2 phút qua proxy của acc, kết quả
+lên dòng thời gian của tài khoản:
+
+- **Xoá trên nền tảng** — TikTok, Instagram, X, Reddit. Bài không mất khỏi CMS, chỉ đánh
+  dấu *đã xoá* (bật "hiện cả bài đã xoá" để xem lại).
+- **Sửa chú thích** — Instagram, Reddit. TikTok web không có đường sửa, X chỉ cho tài
+  khoản trả phí: nút mờ đi kèm lý do, mở trình duyệt làm tay.
+
+Facebook chưa có cả hai — mở trình duyệt làm tay.
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua

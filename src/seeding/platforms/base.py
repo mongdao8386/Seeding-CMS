@@ -73,6 +73,7 @@ HealthCheck = Callable[[Profile], Awaitable[tuple[bool, str]]]
 
 _REGISTRY: dict[Platform, Adapter] = {}
 _IDENTITY: dict[Platform, InteractRunner] = {}
+_MANAGE: dict[Platform, InteractRunner] = {}
 _INTERACT: dict[Platform, InteractRunner] = {}
 _WARM: dict[Platform, WarmPlanner] = {}
 _HEALTH: dict[Platform, HealthCheck] = {}
@@ -105,6 +106,15 @@ def get_identity(platform: Platform) -> InteractRunner | None:
     return _IDENTITY.get(platform)
 
 
+def register_manage(platform: Platform, runner: InteractRunner) -> None:
+    """Xoa bai da dang / sua chu thich. Cung hop dong voi runner nuoi."""
+    _MANAGE[platform] = runner
+
+
+def get_manage(platform: Platform) -> InteractRunner | None:
+    return _MANAGE.get(platform)
+
+
 def register_warm(platform: Platform, planner: WarmPlanner) -> None:
     _WARM[platform] = planner
 
@@ -126,14 +136,17 @@ _MODULES = (
     "seeding.platforms.tiktok.publish",
     "seeding.platforms.tiktok.interact",
     "seeding.platforms.tiktok.warm",
+    "seeding.platforms.tiktok.manage",
     "seeding.platforms.instagram.publish",
     "seeding.platforms.instagram.interact",
     "seeding.platforms.instagram.warm",
     "seeding.platforms.instagram.identity",
+    "seeding.platforms.instagram.manage",
     "seeding.platforms.x.publish",
     "seeding.platforms.x.interact",
     "seeding.platforms.x.warm",
     "seeding.platforms.x.identity",
+    "seeding.platforms.x.manage",
 )
 
 

@@ -98,6 +98,9 @@ export const STATUS_LABEL: Record<AccountStatus, string> = {
 };
 
 /** Hai chữ đầu của handle làm avatar. */
+/** Nen tang co adapter, theo thu tu uu tien. Reddit va Facebook it dung hon nhung khong bo. */
+export const PLATFORMS: Platform[] = ["tiktok", "instagram", "x", "reddit", "facebook"];
+
 export function Avatar({ handle, tone = "ok" }: { handle: string; tone?: "ok" | "warn" | "muted" }) {
   const initials = handle.replace(/^user/, "").slice(0, 2).toUpperCase() || handle.slice(0, 2).toUpperCase();
   const cls = tone === "ok" ? "bg-ok-soft text-ok-text" : tone === "warn" ? "bg-warn-soft text-warn-text" : "bg-soft text-muted";

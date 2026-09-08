@@ -297,7 +297,7 @@ class SlotMeta(BaseModel):
 
 class TimelineItem(BaseModel):
     at: datetime
-    # post | like | follow | comment | repost | browse | session | identity
+    # post | like | follow | comment | repost | browse | session | identity | delete | edit
     kind: str
     status: JobStatus | None
     title: str
@@ -317,6 +317,33 @@ class ActivitySummary(BaseModel):
     follows: KindCount
     comments: KindCount
     accounts_warming: int
+
+
+# ------------------------------------------------------------------ bai da dang
+
+
+class PostOut(BaseModel):
+    attempt_id: uuid.UUID
+    job_id: uuid.UUID
+    account_id: uuid.UUID
+    handle: str
+    platform: Platform
+    title: str
+    caption: str
+    remote_id: str | None
+    remote_url: str | None
+    posted_at: datetime
+    deleted_at: datetime | None
+    edited_at: datetime | None
+    # 'delete' | 'edit' dang cho worker, hoac None
+    pending: str | None
+    # None = lam duoc; khong thi ly do (nen tang khong ho tro)
+    can_delete: str | None
+    can_edit: str | None
+
+
+class PostEditIn(BaseModel):
+    caption: str
 
 
 # --------------------------------------------------------------- doi danh tinh

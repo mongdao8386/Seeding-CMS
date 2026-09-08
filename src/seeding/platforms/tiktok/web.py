@@ -241,11 +241,18 @@ class TikTokWeb:
             last = f"empty {r.status_code}"
         raise RuntimeError(f"{path}: {last}")
 
-    async def _post(self, path: str, extra: dict[str, str], *, idempotent: bool) -> ActionResult:
+    async def _post(
+        self,
+        path: str,
+        extra: dict[str, str],
+        *,
+        idempotent: bool,
+        extra_headers: dict[str, str] | None = None,
+    ) -> ActionResult:
         """Mot hanh dong. Gui DUNG MOT lan; ket qua khong ro thi tuy `idempotent`."""
         assert self._client is not None
         url = await self._signed(path, extra)
-        headers = {"tt-csrf-token": self.cookies.get("tt_csrf_token", "")}
+        headers = {"tt-csrf-token": self.cookies.get("tt_csrf_token", ""), **(extra_headers or {})}
         try:
             r = await self._client.post(url, headers=headers)
         except httpx.TransportError as exc:
@@ -316,6 +323,31 @@ class TikTokWeb:
                 "fromWeb": "1",
             },
             idempotent=True,
+        )
+
+    async def secsdk_csrf(self) -> str:
+        """x-secsdk-csrf-token cho cac endpoint doi no (xoa video): mot HEAD toi
+        passport/web/account/info voi x-secsdk-csrf-request=1, token nam trong
+        x-ware-csrf-token dang "0,<token>,<ttl>,...". Khong lay duoc thi tra ve rong."""
+        assert self._client is not None
+        try:
+            r = await self._client.head(
+                f"{ORIGIN}/passport/web/account/info/",
+                headers={"x-secsdk-csrf-request": "1", "x-secsdk-csrf-version": "1.2.8"},
+            )
+        except httpx.TransportError:
+            return ""
+        parts = r.headers.get("x-ware-csrf-token", "").split(",")
+        return parts[1] if len(parts) > 1 and parts[0] == "0" else ""
+
+    async def delete_video(self, item_id: str) -> ActionResult:
+        """Xoa mot video cua chinh tai khoan. Idempotent: xoa lan hai la da xoa roi."""
+        token = await self.secsdk_csrf()
+        return await self._post(
+            "/api/aweme/delete/",
+            {"aweme_id": item_id, "target": item_id},
+            idempotent=True,
+            extra_headers={"x-secsdk-csrf-token": token} if token else None,
         )
 
     async def comment(self, item_id: str, text: str) -> ActionResult:

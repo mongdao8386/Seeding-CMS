@@ -240,7 +240,7 @@ export type SlotMeta = { timezone: string; weekdays: string[] };
 
 export type TimelineItem = {
   at: string;
-  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity";
+  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity" | "delete" | "edit";
   status: JobStatus | null;
   title: string;
   detail: string | null;
@@ -273,6 +273,24 @@ export type Settings = {
   tiktok_interact_via_http: boolean;
   instagram_enabled: boolean;
   x_enabled: boolean;
+};
+
+export type Post = {
+  attempt_id: string;
+  job_id: string;
+  account_id: string;
+  handle: string;
+  platform: Platform;
+  title: string;
+  caption: string;
+  remote_id: string | null;
+  remote_url: string | null;
+  posted_at: string;
+  deleted_at: string | null;
+  edited_at: string | null;
+  pending: "delete" | "edit" | null;
+  can_delete: string | null;
+  can_edit: string | null;
 };
 
 export type Identity = {

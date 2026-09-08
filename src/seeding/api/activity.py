@@ -24,6 +24,7 @@ from seeding.domain.models import (
     SessionEvent,
     SessionEventKind,
 )
+from seeding.platforms import manage
 from seeding.scheduling import slots as slots_mod
 
 router = APIRouter(tags=["activity"])
@@ -48,6 +49,8 @@ _KIND_LABEL = {
     ActivityKind.REACT: "like",
     ActivityKind.WATCH_VIDEO: "browse",
     ActivityKind.IDENTITY: "identity",
+    ActivityKind.DELETE: "delete",
+    ActivityKind.EDIT: "edit",
 }
 
 
@@ -107,7 +110,7 @@ async def timeline(
                 status=a.status,
                 title=_target_label(a),
                 detail=a.detail or a.last_error,
-                url=None if a.kind is ActivityKind.IDENTITY else a.target_url,
+                url=_timeline_url(a),
             )
         )
 
@@ -139,9 +142,20 @@ async def timeline(
     return items[:limit]
 
 
+def _timeline_url(a: ActivityJob) -> str | None:
+    if a.kind is ActivityKind.IDENTITY:
+        return None
+    if a.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
+        plan = manage.decode(a.target_url)
+        return plan.remote_url if plan and plan.remote_url else None
+    return a.target_url
+
+
 def _target_label(a: ActivityJob) -> str:
     if a.kind is ActivityKind.IDENTITY:
         return "Đổi danh tính: " + identity.describe(identity.plan_from_target(a.target_url))
+    if a.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
+        return manage.describe(manage.decode(a.target_url))
     url = a.target_url or ""
     handle = url.split("/@")[1].split("/")[0] if "/@" in url else ""
     verb = {

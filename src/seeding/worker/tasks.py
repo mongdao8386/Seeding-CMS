@@ -316,6 +316,8 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
 
         if job.kind is ActivityKind.IDENTITY:
             runner = adapters.get_identity(job.account.platform)
+        elif job.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
+            runner = adapters.get_manage(job.account.platform)
         else:
             runner = adapters.get_interact(job.account.platform)
         if runner is None:

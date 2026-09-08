@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Platform, type Settings, type Slot, type SlotMeta, type SystemStatus } from "@/lib/api";
-import { ErrorNote, PLATFORM_LABEL, PageTitle, useLoad } from "@/components/ui";
+import { ErrorNote, PLATFORM_LABEL, PLATFORMS, PageTitle, useLoad } from "@/components/ui";
 
 /** Cài đặt: giờ vàng (sửa được), nhịp nuôi và trạng thái hệ thống (đọc từ .env). */
 export default function SettingsPage() {
@@ -29,7 +29,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="flex gap-1.5 text-sm">
-            {(["tiktok", "instagram", "x"] as Platform[]).map((p) => (
+            {PLATFORMS.map((p) => (
               <button key={p} className={"rounded-lg px-2.5 py-1.5 " + (platform === p ? "bg-soft font-medium" : "text-muted")} onClick={() => setPlatform(p)}>
                 {PLATFORM_LABEL[p]}
               </button>
