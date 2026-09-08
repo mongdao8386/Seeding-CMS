@@ -11,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from seeding.api.deps import get_session
 from seeding.api.schemas import ResolveIn, SettingsOut, TakeoverOut
 from seeding.config import get_settings
+from seeding.domain import profiles as profiles_mod
 from seeding.domain import vault
 from seeding.domain.models import Account, Profile, TakeoverRequest, TakeoverStatus
 from seeding.ops import alerts, flags, takeover
+from seeding.platforms import base as adapters
 
 router = APIRouter(tags=["takeovers"])
 
@@ -72,8 +74,28 @@ async def _open(s: AsyncSession, takeover_id: uuid.UUID) -> TakeoverRequest:
 async def resolve(
     takeover_id: uuid.UUID, body: ResolveIn, s: AsyncSession = Depends(get_session)
 ) -> TakeoverOut:
-    """Da giai xong. Job bi ket duoc hen lai sau 6 tieng, khong chay ngay."""
+    """Da giai xong. Job bi ket duoc hen lai sau 6 tieng, khong chay ngay.
+
+    Nen tang nao kiem phien duoc bang HTTP (TikTok, Instagram, X) thi hoi truoc: phien
+    van chet ma bam "Da giai" la tra acc ve hang doi de roi job ke tiep lai mo dung yeu
+    cau nay - va nguoi van hanh tuong da xong.
+    """
     request = await _open(s, takeover_id)
+    account = await s.get(Account, request.account_id)
+    profile = await profiles_mod.get_for_account(s, request.account_id)
+    checker = adapters.get_health(account.platform) if account and profile else None
+    if checker is not None:
+        try:
+            ok, detail = await checker(profile)
+        except adapters.LibraryBroken:
+            ok, detail = True, "không kiểm được (thư viện lệch), tin người vận hành"
+        await profiles_mod.mark_health(s, profile, ok, detail=detail)
+        if not ok:
+            raise HTTPException(
+                409,
+                f"Phiên vẫn chết ({detail}). Bấm Mở trình duyệt, đăng nhập lại trong cửa sổ "
+                "đó, đóng cửa sổ, rồi mới bấm Đã giải.",
+            )
     await takeover.resolve(s, request, by=body.by, note=body.note)
     return await _out(s, request)
 

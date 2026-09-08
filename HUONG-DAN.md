@@ -42,6 +42,23 @@ OK — **một acc một proxy, không dùng chung, không đổi**. Hết proxy
 Bấm vào một tài khoản → **Mở trình duyệt**: cửa sổ thật với đúng proxy, cookie, fingerprint
 của acc đó. Đăng nhập tay, giải captcha, xem gì cũng được; đóng cửa sổ là cookie được lưu.
 
+## 2c. Đăng nhập lại một acc (phiên chết, captcha)
+
+Khi hàng chờ người báo "phiên chết" hay "captcha":
+
+1. Trên thẻ đó bấm **Mở trình duyệt**. Cửa sổ mở với đúng proxy, fingerprint và cookie
+   của acc (qua proxy dân cư có thể mất vài phút mới hiện trang).
+2. Đăng nhập lại ngay trong cửa sổ đó: mật khẩu, hoặc **quét mã QR** bằng app TikTok
+   đang đăng nhập trên điện thoại (khi chỉ có cookie mà không có mật khẩu). Gặp captcha
+   thì giải luôn. Mã 2FA lấy ở nút **Mã 2FA** nếu đã lưu totp.
+3. **Đóng cửa sổ.** Cookie mới được lưu; hệ thống hỏi TikTok ngay xem phiên mới có sống
+   không và ghi vào dòng thời gian ("Kiểm phiên").
+4. Bấm **Đã giải**. Nếu phiên vẫn chết, nút này từ chối và nói rõ; làm lại bước 1–3.
+
+Vì sao phải đăng nhập *trong profile* chứ không dán cookie mới: phiên sinh ra ở đúng
+thiết bị (fingerprint + proxy) thì TikTok mới tin những cú bấm sau đó. Cookie dán từ
+máy khác là lý do gặp captcha ngay lần thả tim đầu tiên (mục 3b).
+
 ## 2b. Hai loại tài khoản: xây kênh và tương tác chéo (phần 11)
 
 - **Xây kênh** (mặc định): đăng bài, nuôi hướng ra ngoài (For You + từ khoá), chatbot,

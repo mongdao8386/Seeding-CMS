@@ -21,6 +21,7 @@ from seeding.db import SessionLocal, engine
 from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
 from seeding.domain.models import Account, Profile
+from seeding.platforms import base as adapters
 
 # Luu cookie moi tung nay giay. Trinh duyet mo lau ma sap nguon hay treo may thi van
 # con lai phan lon tien do.
@@ -80,6 +81,19 @@ async def main(profile_id: str, url: str | None) -> int:
         if last_state and last_state.get("cookies"):
             await profiles_mod.save_cookies(session, profile, last_state)
             print(f"Da luu {len(last_state['cookies'])} cookie.")
+
+        # Nguoi vua dang nhap lai / giai captcha trong cua so: hoi ngay nen tang xem
+        # phien MOI co song khong, ghi vao dong thoi gian. Khong thi phai doi quet suc
+        # khoe gio sau moi biet, va "Da giai" co the bam nham tren phien van chet.
+        adapters.load_all()
+        checker = adapters.get_health(account.platform)
+        if checker is not None:
+            try:
+                ok, detail = await checker(profile)
+            except Exception as exc:
+                ok, detail = False, f"khong kiem duoc: {type(exc).__name__}"
+            await profiles_mod.mark_health(session, profile, ok, detail=detail)
+            print(f"Kiem phien sau khi dong: {'SONG' if ok else 'CHET'} - {detail}")
 
     await engine.dispose()
     return 0

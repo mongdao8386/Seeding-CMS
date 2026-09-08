@@ -26,6 +26,7 @@ from seeding.domain.models import (
     TakeoverStatus,
 )
 from seeding.ops import takeover
+from seeding.platforms import base as adapters
 
 
 @pytest.fixture(scope="module")
@@ -37,6 +38,16 @@ async def client():
         timeout=60,
     ) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _tiktok_session_alive(monkeypatch):
+    """Resolve hoi nen tang xem phien con song khong. Trong test: song, khong ra mang."""
+
+    async def alive(profile):
+        return True, "user_id=1"
+
+    monkeypatch.setitem(adapters._HEALTH, Platform.TIKTOK, alive)
 
 
 @pytest.fixture
@@ -139,3 +150,27 @@ async def test_settings_never_leak_secrets(client):
     assert set(body) >= {"warmup_quiet_days", "warmup_days", "alert_configured"}
     for key in body:
         assert "token" not in key and "url" not in key and "password" not in key
+
+
+async def test_resolve_is_refused_while_the_session_is_still_dead(
+    client, stuck_account, monkeypatch
+):
+    """Nguoi bam "Da giai" ma chua dang nhap lai: tu choi, noi ro phai lam gi, yeu cau van mo."""
+
+    async def dead(profile):
+        return False, "phiên chết: session_expired"
+
+    monkeypatch.setitem(adapters._HEALTH, Platform.TIKTOK, dead)
+    async with SessionLocal() as s:
+        account = await s.get(Account, stuck_account)
+        req = await takeover.open_request(s, account, "phiên chết: session_expired")
+
+    r = await client.post(f"/takeovers/{req.id}/resolve", json={"by": "test"})
+    assert r.status_code == 409
+    assert "đăng nhập lại" in r.json()["detail"]
+
+    r = await client.get("/takeovers")
+    assert any(t["id"] == str(req.id) for t in r.json()), "yeu cau phai con mo"
+    async with SessionLocal() as s:
+        account = await s.get(Account, stuck_account)
+        assert account.status is AccountStatus.NEEDS_HUMAN

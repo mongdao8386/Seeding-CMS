@@ -5,6 +5,18 @@ import { useState } from "react";
 import { api, type OpenedProfile, type Takeover } from "@/lib/api";
 import { Empty, PLATFORM_LABEL, timeAgo } from "@/components/ui";
 
+const RELOGIN_HINT =
+  "Phiên đã chết: bấm Mở trình duyệt, đăng nhập lại ngay trong cửa sổ đó (mật khẩu hoặc quét QR bằng app đang đăng nhập), đóng cửa sổ để lưu cookie, rồi bấm Đã giải. Đã giải sẽ từ chối nếu phiên vẫn chết.";
+const CAPTCHA_HINT =
+  "Checkpoint: bấm Mở trình duyệt, giải captcha / xác minh ngay trong cửa sổ đó, đóng cửa sổ, rồi bấm Đã giải.";
+
+function hintFor(reason: string): string | null {
+  const r = reason.toLowerCase();
+  if (r.includes("phiên chết") || r.includes("logged_out") || r.includes("session")) return RELOGIN_HINT;
+  if (r.includes("captcha") || r.includes("verify") || r.includes("checkpoint")) return CAPTCHA_HINT;
+  return null;
+}
+
 /** Hàng đợi chờ người — thứ nổi nhất trên Tổng quan. Mỗi dòng: vì sao, và ba nút. */
 export function TakeoverList({ items, onChange, onError }: { items: Takeover[]; onChange: () => void; onError: (m: string) => void }) {
   if (items.length === 0) {
@@ -52,6 +64,7 @@ function TakeoverRow({ t, onChange, onError }: { t: Takeover; onChange: () => vo
         )}
       </div>
       <div className="text-sm text-warn-text">{t.reason}</div>
+      {hintFor(t.reason) && <div className="text-xs text-muted">{hintFor(t.reason)}</div>}
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="btn text-xs"
