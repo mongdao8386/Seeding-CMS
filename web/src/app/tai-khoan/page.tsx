@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { api, qs, type AccountRole, type AccountRow, type Page, type Platform, type Proxy } from "@/lib/api";
+import { api, ApiError, qs, type AccountRole, type AccountRow,
+  type BulkDeleteOut, type Page, type Platform, type Proxy } from "@/lib/api";
 import { ImportAccounts, ImportProxies } from "@/components/import-panel";
 import {
   Avatar,
@@ -163,6 +164,7 @@ function Accounts() {
           offset={offset}
           onPage={setOffset}
           freeProxies={freeProxies}
+          onChange={reloadAll}
         />
       ) : (
         <ProxyList proxies={proxies.data?.items ?? []} onChange={reloadAll} />
@@ -177,24 +179,86 @@ function AccountList({
   offset,
   onPage,
   freeProxies,
+  onChange,
 }: {
   page: Page<AccountRow> | null;
   loading: boolean;
   offset: number;
   onPage: (n: number) => void;
   freeProxies: number;
+  onChange: () => void;
 }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function bulkDelete(all: boolean) {
+    const n = all ? page?.total ?? 0 : selected.size;
+    if (!n) return;
+    const what = all ? `TẤT CẢ ${n} tài khoản` : `${n} tài khoản đã chọn`;
+    if (!confirm(`Xoá ${what}? Profile, cookie, thông tin đăng nhập, lịch nuôi và lịch đăng của chúng mất hết. Không hoàn tác được.`)) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const body = all ? { all: true } : { ids: [...selected] };
+      let r = await api.post<BulkDeleteOut>("/accounts/bulk-delete", body);
+      if (r.skipped.length && confirm(`${r.detail}.\n\nXoá cả ${r.skipped.length} tài khoản đã đăng bài (${r.skipped.slice(0, 5).join(", ")}${r.skipped.length > 5 ? "…" : ""})?`)) {
+        const again = await api.post<BulkDeleteOut>("/accounts/bulk-delete", { ...body, force: true });
+        r = { ...again, deleted: r.deleted + again.deleted };
+      }
+      setNote(`Đã xoá ${r.deleted} tài khoản.`);
+      setSelected(new Set());
+      onChange();
+    } catch (e) {
+      setNote(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!page && loading) return <p className="text-muted">Đang tải…</p>;
   if (!page || page.items.length === 0) {
-    return <Empty>Chưa có tài khoản nào khớp. Bấm “Dán tài khoản” để nhập từ file người bán.</Empty>;
+    return (
+      <>
+        {note && <div className="card mb-3 p-3 text-sm text-muted">{note}</div>}
+        <Empty>Chưa có tài khoản nào khớp. Bấm “Dán tài khoản” để nhập từ file người bán.</Empty>
+      </>
+    );
   }
   const blocked = page.items.filter((a) => !a.ready && a.status !== "dead").length;
+  const allOnPage = page.items.every((a) => selected.has(a.id));
+
+  function toggle(id: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <div className="card overflow-hidden">
-      <div className="hidden grid-cols-[minmax(0,2fr)_90px_130px_110px_minmax(0,1.6fr)_130px] gap-4 border-b border-line px-5 py-2.5 lg:grid">
-        {["Tài khoản", "Proxy", "Phiên", "Nuôi", "Việc gần nhất", "Trạng thái"].map((h) => (
-          <span key={h} className="label">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-softer px-4 py-2 text-sm lg:px-5">
+        <label className="flex items-center gap-2 text-muted">
+          <input
+            type="checkbox"
+            checked={allOnPage}
+            onChange={() => setSelected(allOnPage ? new Set() : new Set(page.items.map((a) => a.id)))}
+          />
+          chọn cả trang
+        </label>
+        <button className="btn btn-ghost text-xs text-bad-text" disabled={busy || selected.size === 0} onClick={() => bulkDelete(false)}>
+          Xoá đã chọn{selected.size ? ` (${selected.size})` : ""}
+        </button>
+        <button className="btn btn-ghost text-xs text-bad-text" disabled={busy} onClick={() => bulkDelete(true)}>
+          Xoá tất cả ({page.total})
+        </button>
+        {note && <span className="text-muted">{note}</span>}
+      </div>
+      <div className="hidden grid-cols-[28px_minmax(0,2fr)_90px_130px_110px_minmax(0,1.6fr)_130px] gap-4 border-b border-line px-5 py-2.5 lg:grid">
+        {["", "Tài khoản", "Proxy", "Phiên", "Nuôi", "Việc gần nhất", "Trạng thái"].map((h, i) => (
+          <span key={i} className="label">
             {h}
           </span>
         ))}
@@ -204,8 +268,20 @@ function AccountList({
         <Link
           key={a.id}
           href={`/tai-khoan/${a.id}`}
-          className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-line px-4 py-3 hover:bg-softer lg:grid-cols-[minmax(0,2fr)_90px_130px_110px_minmax(0,1.6fr)_130px] lg:gap-4 lg:px-5"
+          className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-line px-4 py-3 hover:bg-softer lg:grid-cols-[28px_minmax(0,2fr)_90px_130px_110px_minmax(0,1.6fr)_130px] lg:gap-4 lg:px-5"
         >
+          <input
+            type="checkbox"
+            checked={selected.has(a.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            onChange={(e) => {
+              e.stopPropagation();
+              toggle(a.id);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
           <div className="flex items-center gap-2.5 lg:contents">
             <Avatar handle={a.handle} tone={a.ready ? "ok" : a.status === "dead" ? "muted" : "warn"} />
             <div className="flex min-w-0 flex-col lg:contents">
@@ -224,7 +300,7 @@ function AccountList({
           <span className="hidden truncate text-muted lg:block">
             {a.last_posted_at ? `Đăng bài · ${timeAgo(a.last_posted_at)}` : "Chưa làm gì"}
           </span>
-          <span className="col-start-3 row-start-1 lg:col-start-auto lg:row-start-auto">
+          <span className="col-start-4 row-start-1 lg:col-start-auto lg:row-start-auto">
             <StatusPill account={a} />
           </span>
         </Link>

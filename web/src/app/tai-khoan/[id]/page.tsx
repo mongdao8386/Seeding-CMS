@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, type AccountDetail, type OpenedProfile, type TimelineItem } from "@/lib/api";
+import { api, ApiError, type AccountDetail, type OpenedProfile, type TimelineItem } from "@/lib/api";
 import { CredentialsCard } from "@/components/credentials";
 import { IdentityCard } from "@/components/identity";
 import { Avatar, Empty, ErrorNote, PLATFORM_LABEL, StatusPill, useLoad } from "@/components/ui";
@@ -11,6 +11,7 @@ import { Avatar, Empty, ErrorNote, PLATFORM_LABEL, StatusPill, useLoad } from "@
 /** Chi tiết tài khoản: danh tính, mở trình duyệt, dòng thời gian (đăng + nuôi). */
 export default function AccountPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const acc = useLoad(() => api.get<AccountDetail>(`/accounts/${id}`), [id]);
   const timeline = useLoad(() => api.get<TimelineItem[]>(`/accounts/${id}/timeline`), [id]);
   const [opened, setOpened] = useState<string | null>(null);
@@ -39,6 +40,29 @@ export default function AccountPage() {
       acc.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function remove() {
+    if (!a) return;
+    if (!confirm(`Xoá tài khoản ${a.handle}? Profile, cookie, thông tin đăng nhập, lịch nuôi và lịch đăng của nó mất hết. Không hoàn tác được.`)) return;
+    setBusy(true);
+    try {
+      try {
+        await api.del(`/accounts/${a.id}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) {
+          if (!confirm(`${e.message}\n\nVẫn xoá?`)) return;
+          await api.del(`/accounts/${a.id}?force=true`);
+        } else {
+          throw e;
+        }
+      }
+      router.push("/tai-khoan");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -104,6 +128,9 @@ export default function AccountPage() {
               )}
               <button className="btn btn-primary" disabled={busy || !a.profile_id || !a.proxy_label} onClick={open}>
                 {busy ? "Đang mở…" : "Mở trình duyệt"}
+              </button>
+              <button className="btn btn-ghost text-bad-text" disabled={busy} onClick={remove}>
+                Xoá
               </button>
             </div>
           </div>

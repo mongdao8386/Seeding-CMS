@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +16,8 @@ from seeding.api.schemas import (
     AccountDetail,
     AccountPatch,
     AccountRow,
+    BulkDeleteIn,
+    BulkDeleteOut,
     DeleteOut,
     ImportResult,
     Page,
@@ -296,7 +298,21 @@ async def delete_account(
     account = await s.get(Account, account_id)
     if account is None:
         raise HTTPException(404, "Không có tài khoản này")
-    posted = int(
+    posted = await _posted_count(s, account_id)
+    if posted and not force:
+        raise HTTPException(
+            409,
+            f"{account.handle} đã đăng {posted} bài. Xoá là mất lịch sử đó — muốn xoá thật thì "
+            "gửi force=true.",
+        )
+    handle = account.handle
+    await _erase(s, account)
+    await s.commit()
+    return DeleteOut(deleted=True, detail=f"Đã xoá {handle}")
+
+
+async def _posted_count(s: AsyncSession, account_id: uuid.UUID) -> int:
+    return int(
         (
             await s.execute(
                 select(func.count())
@@ -306,16 +322,43 @@ async def delete_account(
             )
         ).scalar_one()
     )
-    if posted and not force:
-        raise HTTPException(
-            409,
-            f"{account.handle} đã đăng {posted} bài. Xoá là mất lịch sử đó — muốn xoá thật thì "
-            "gửi force=true.",
-        )
-    handle = account.handle
+
+
+async def _erase(s: AsyncSession, account: Account) -> None:
+    """Xoa tai khoan va moi thu treo vao no. post_jobs tro ve accounts KHONG cascade (co y:
+    lich su dang la bang chung), nen phai xoa tay truoc - khong thi Postgres tu choi va
+    nut Xoa "khong hoat dong" (08/09/2026)."""
+    await s.execute(delete(PostJob).where(PostJob.account_id == account.id))
     await s.delete(account)
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteOut)
+async def bulk_delete_accounts(
+    body: BulkDeleteIn, s: AsyncSession = Depends(get_session)
+) -> BulkDeleteOut:
+    """Xoa nhieu tai khoan mot luc (chon tren danh sach, hoac tat ca). Tai khoan da dang
+    bai bi bo qua tru khi force - tra ve danh sach de nguoi dung quyet dinh."""
+    if body.all:
+        accounts = list((await s.execute(select(Account))).scalars().all())
+    else:
+        if not body.ids:
+            return BulkDeleteOut(deleted=0, skipped=[], detail="Chưa chọn tài khoản nào")
+        accounts = list(
+            (await s.execute(select(Account).where(Account.id.in_(body.ids)))).scalars().all()
+        )
+    deleted = 0
+    skipped: list[str] = []
+    for account in accounts:
+        if not body.force and await _posted_count(s, account.id):
+            skipped.append(account.handle)
+            continue
+        await _erase(s, account)
+        deleted += 1
     await s.commit()
-    return DeleteOut(deleted=True, detail=f"Đã xoá {handle}")
+    detail = f"Đã xoá {deleted} tài khoản"
+    if skipped:
+        detail += f"; bỏ qua {len(skipped)} tài khoản đã đăng bài (gửi force để xoá cả)"
+    return BulkDeleteOut(deleted=deleted, skipped=skipped, detail=detail)
 
 
 # ------------------------------------------------------------ thong tin dang nhap

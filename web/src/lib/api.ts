@@ -112,6 +112,8 @@ export type AccountDetail = AccountRow & {
   profile_id: string | null;
 };
 
+export type BulkDeleteOut = { deleted: number; skipped: string[]; detail: string };
+
 export type AccountSecrets = {
   fields: Record<string, string>;
   totp_code: string | null;

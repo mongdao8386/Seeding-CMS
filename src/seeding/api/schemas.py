@@ -80,6 +80,21 @@ class AccountPatch(BaseModel):
     role: AccountRole | None = None
 
 
+class BulkDeleteIn(BaseModel):
+    """Xoa nhieu tai khoan: theo danh sach id, hoac `all=True` = moi tai khoan trong he thong."""
+
+    ids: list[uuid.UUID] = []
+    all: bool = False
+    force: bool = False
+
+
+class BulkDeleteOut(BaseModel):
+    deleted: int
+    # Handle bi bo qua vi da dang bai ma khong force.
+    skipped: list[str]
+    detail: str
+
+
 class SecretsOut(BaseModel):
     """Thong tin dang nhap cua acc, giai ma tu ket. Chi tra ve cho nguoi da co API token."""
 
