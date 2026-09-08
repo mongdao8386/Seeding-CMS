@@ -19,10 +19,23 @@ from seeding.domain.models import (
     Attempt,
     JobStatus,
     PostJob,
+    Profile,
+    SessionEvent,
+    SessionEventKind,
 )
 from seeding.scheduling import slots as slots_mod
 
 router = APIRouter(tags=["activity"])
+
+_EVENT_VI = {
+    SessionEventKind.CREATED: "Tạo profile",
+    SessionEventKind.LOGIN: "Đăng nhập tay",
+    SessionEventKind.HEALTH_OK: "Kiểm phiên: còn sống",
+    SessionEventKind.HEALTH_FAIL: "Kiểm phiên: hỏng",
+    SessionEventKind.CHECKPOINT: "Checkpoint",
+    SessionEventKind.TAKEOVER: "Người xử lý",
+    SessionEventKind.COOKIES_SAVED: "Lưu cookie",
+}
 
 _KIND_LABEL = {
     ActivityKind.ENGAGE: "like",
@@ -96,7 +109,29 @@ async def timeline(
             )
         )
 
-    # Su kien phien (dang nhap, health check) vao dong thoi gian o phan 4.
+    profile_id = (
+        await s.execute(select(Profile.id).where(Profile.account_id == account_id))
+    ).scalar_one_or_none()
+    if profile_id is not None:
+        events = (
+            await s.execute(
+                select(SessionEvent)
+                .where(SessionEvent.profile_id == profile_id)
+                .order_by(SessionEvent.created_at.desc())
+                .limit(limit)
+            )
+        ).scalars()
+        for e in events:
+            items.append(
+                TimelineItem(
+                    at=e.created_at,
+                    kind="session",
+                    status=None,
+                    title=_EVENT_VI.get(e.kind, e.kind.value),
+                    detail=e.detail,
+                    url=None,
+                )
+            )
 
     items.sort(key=lambda i: i.at, reverse=True)
     return items[:limit]

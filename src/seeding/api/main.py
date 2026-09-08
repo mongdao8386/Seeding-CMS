@@ -14,6 +14,7 @@ from seeding.api import (
     schedule,
     slots,
     system,
+    takeovers,
 )
 from seeding.api.security import require_token
 from seeding.config import get_settings
@@ -51,5 +52,6 @@ for r in (
     schedule.router,
     slots.router,
     system.router,
+    takeovers.router,
 ):
     app.include_router(r, dependencies=[Depends(require_token)])

@@ -16,6 +16,7 @@ from arq.connections import RedisSettings
 from seeding.config import get_settings
 from seeding.worker.tasks import (
     activity_tick,
+    health_sweep,
     plan_activity,
     prune_media,
     run_activity_job,
@@ -61,6 +62,8 @@ class WorkerSettings:
         cron(activity_tick, second={15}),
         cron(plan_activity, hour={6}, minute={0}, run_at_startup=True),
         cron(prune_media, hour={4}, minute={30}),
+        # Kiem phien moi tieng; moi lan chi 10 profile qua han nhat.
+        cron(health_sweep, minute={7}),
         cron(heartbeat, minute=set(range(0, 60, 5)), run_at_startup=True),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

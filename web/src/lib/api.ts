@@ -245,6 +245,32 @@ export type TimelineItem = {
   url: string | null;
 };
 
+export type Takeover = {
+  id: string;
+  created_at: string;
+  account_id: string;
+  profile_id: string | null;
+  handle: string;
+  platform: Platform;
+  reason: string;
+  status: "open" | "resolved" | "abandoned";
+  has_stuck_job: boolean;
+  alerted: boolean;
+};
+
+export type Settings = {
+  warmup_quiet_days: number;
+  warmup_days: number;
+  default_daily_cap: number;
+  health_check_interval_hours: number;
+  health_fail_threshold: number;
+  schedule_timezone: string;
+  alert_kind: string;
+  alert_configured: boolean;
+  tiktok_post_via_http: boolean;
+  tiktok_interact_via_http: boolean;
+};
+
 export type KindCount = { planned: number; done: number; failed: number };
 export type ActivitySummary = {
   date: string;

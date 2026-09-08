@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { api, qs, type ActivitySummary, type Job, type Stats } from "@/lib/api";
+import { useState } from "react";
+import { api, qs, type ActivitySummary, type Job, type Stats, type Takeover } from "@/lib/api";
+import { TakeoverList } from "@/components/takeovers";
 import { Empty, ErrorNote, PageTitle, useLoad } from "@/components/ui";
 
 const DAYS = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
@@ -13,6 +15,9 @@ export default function Overview() {
   const stats = useLoad(() => api.get<Stats>("/stats"));
   const warm = useLoad(() => api.get<ActivitySummary>("/activity/summary"));
   const today = useLoad(() => api.get<Job[]>(`/schedule${qs({ start: todayIso, days: 1 })}`));
+  const queue = useLoad(() => api.get<Takeover[]>("/takeovers"));
+  const [note, setNote] = useState<string | null>(null);
+  const waiting = queue.data?.length ?? 0;
   const s = stats.data;
   const w = warm.data;
   const posted = (today.data ?? []).filter((j) => j.status === "succeeded").length;
@@ -22,28 +27,29 @@ export default function Overview() {
     <>
       <PageTitle
         title={`${DAYS[now.getDay()]}, ${now.getDate()} tháng ${now.getMonth() + 1}`}
-        sub={s ? (s.needs_human > 0 ? `${s.needs_human} tài khoản đang cần bạn.` : "Không có gì cần bạn.") : "…"}
+        sub={queue.data ? (waiting > 0 ? `${waiting} tài khoản đang cần bạn.` : "Không có gì cần bạn.") : "…"}
         action={
           <Link href="/tai-khoan?dan=acc" className="btn btn-primary">
             Dán tài khoản
           </Link>
         }
       />
-      <ErrorNote message={stats.error ?? warm.error ?? today.error} />
+      <ErrorNote message={stats.error ?? warm.error ?? today.error ?? queue.error} />
+      {note && <div className="card mb-4 border-l-[3px] border-ok p-3 text-sm text-ok-text">{note}</div>}
 
       <section className="mb-6 flex flex-col gap-3">
         <div className="flex items-center gap-2.5">
           <span className="label">Cần bạn</span>
-          <span className="pill bg-soft text-muted">{s?.needs_human ?? "…"}</span>
+          <span className={"pill " + (waiting > 0 ? "bg-warn-soft text-warn-text" : "bg-soft text-muted")}>{queue.data ? waiting : "…"}</span>
         </div>
-        {s && s.needs_human === 0 ? (
-          <Empty>Hàng đợi trống. Checkpoint, phiên chết hay bài không xác nhận được sẽ hiện ở đây trước tiên.</Empty>
-        ) : (
-          <Empty>
-            {s?.needs_human ?? 0} tài khoản đang cần bạn — mở{" "}
-            <Link href="/tai-khoan">Tài khoản</Link>, lọc “Cần bạn”. Hàng đợi chi tiết vào ở phần 4.
-          </Empty>
-        )}
+        <TakeoverList
+          items={queue.data ?? []}
+          onChange={() => {
+            queue.reload();
+            stats.reload();
+          }}
+          onError={(m) => setNote(m)}
+        />
       </section>
 
       <div className="grid gap-5 md:grid-cols-2">

@@ -14,6 +14,7 @@ from seeding.domain.models import (
     Platform,
     ProxyKind,
     ProxyStatus,
+    TakeoverStatus,
 )
 
 
@@ -313,3 +314,37 @@ class ActivitySummary(BaseModel):
     follows: KindCount
     comments: KindCount
     accounts_warming: int
+
+
+# ------------------------------------------------------------------- cho nguoi
+
+
+class TakeoverOut(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    account_id: uuid.UUID
+    profile_id: uuid.UUID | None
+    handle: str
+    platform: Platform
+    reason: str
+    status: TakeoverStatus
+    has_stuck_job: bool
+    alerted: bool
+
+
+class ResolveIn(BaseModel):
+    by: str = "dashboard"
+    note: str | None = None
+
+
+class SettingsOut(BaseModel):
+    warmup_quiet_days: int
+    warmup_days: int
+    default_daily_cap: int
+    health_check_interval_hours: int
+    health_fail_threshold: int
+    schedule_timezone: str
+    alert_kind: str
+    alert_configured: bool
+    tiktok_post_via_http: bool
+    tiktok_interact_via_http: bool

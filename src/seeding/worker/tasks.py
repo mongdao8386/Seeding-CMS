@@ -1,8 +1,12 @@
-"""Job cua worker - phan 2: dang bai.
+"""Job cua worker.
 
-tick()          quet job toi gio, qua governor (ramp + quiet period), day vao queue
-run_post_job()  dang mot bai, ghi Attempt, quyet dinh retry / cho nguoi / bo
-prune_media()   don ban bien the media cu
+tick()              quet job dang bai toi gio, qua governor, day vao queue
+run_post_job()      dang mot bai, ghi Attempt, retry / cho nguoi / bo
+plan_activity()     lap lich nuoi hom nay
+activity_tick()     quet job nuoi toi gio
+run_activity_job()  mot lan tha tim / follow / binh luan
+health_sweep()      kiem phien qua han, mo yeu cau cho nguoi khi chet
+prune_media()       don ban bien the media cu
 """
 
 from __future__ import annotations
@@ -196,12 +200,15 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
         elif job.status == JobStatus.SCHEDULED:
             backoff = RETRY_BACKOFF[min(job.attempt_count - 1, len(RETRY_BACKOFF) - 1)]
             job.scheduled_at = datetime.now(UTC) + backoff
-        elif job.status == JobStatus.NEEDS_HUMAN:
-            # Hang doi cho nguoi (phan 4) doc tu trang thai tai khoan. Dung tai khoan
-            # lai o day de khong job nao khac cua no chay tiep trong luc cho.
-            job.account.status = AccountStatus.NEEDS_HUMAN
-
         await session.commit()
+
+        if job.status == JobStatus.NEEDS_HUMAN:
+            # Vao hang doi cho nguoi, nho job de giai xong thu lai dung job do.
+            from seeding.ops import takeover
+
+            await takeover.open_request(
+                session, job.account, result.error or "checkpoint", post_job_id=job.id
+            )
         log.info(
             "job.finished",
             job=job_id,
@@ -241,7 +248,7 @@ async def plan_activity(ctx: dict) -> int:
 
 async def activity_tick(ctx: dict) -> int:
     """Quet job nuoi toi gio. Khong qua rate governor: tran cua governor la tran DANG BAI."""
-    from seeding.domain.models import Account, AccountStatus, ActivityJob
+    from seeding.domain.models import Account, ActivityJob
 
     now = datetime.now(UTC)
     enqueued = 0
@@ -313,7 +320,9 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
         elif result.checkpoint and not result.checkpoint.is_terminal:
             job.status = JobStatus.NEEDS_HUMAN
             job.last_error = result.detail
-            job.account.status = AccountStatus.NEEDS_HUMAN
+            from seeding.ops import takeover
+
+            await takeover.open_request(session, job.account, result.detail)
         elif result.retryable and job.attempt_count < ACTIVITY_MAX_ATTEMPTS:
             job.status = JobStatus.SCHEDULED
             job.scheduled_at = datetime.now(UTC) + timedelta(minutes=45)
@@ -331,3 +340,42 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             detail=result.detail,
         )
         return job.status.value
+
+
+# ------------------------------------------------------- suc khoe phien (phan 4)
+
+
+async def health_sweep(ctx: dict) -> int:
+    """Kiem phien cua cac profile da qua han. Tuan tu: moi lan kiem la mot lan mo trinh
+    duyet (~400MB). Endpoint nhe duoc uu tien (session.py) nen thuong chi ~15 giay."""
+    from seeding.browser.session import check_session
+    from seeding.domain.models import Account, Proxy
+    from seeding.ops import takeover
+
+    settings = get_settings()
+    checked = 0
+    async with SessionLocal() as session:
+        healed = await takeover.reconcile(session)
+        if healed:
+            log.warning("health_sweep.reconciled", count=healed)
+
+        due = await profiles_mod.due_for_health_check(
+            session, settings.health_check_interval_hours, limit=10
+        )
+        for profile in due:
+            account = await session.get(Account, profile.account_id)
+            if account is None:
+                continue
+            if profile.proxy_id is not None and "proxy" not in profile.__dict__:
+                profile.proxy = await session.get(Proxy, profile.proxy_id)
+            ok, detail = await check_session(profile, account.platform)
+            needs_human = await profiles_mod.mark_health(
+                session, profile, ok, detail=detail, threshold=settings.health_fail_threshold
+            )
+            if needs_human:
+                await takeover.open_request(session, account, f"phiên chết: {detail}")
+            checked += 1
+            log.info("health.checked", handle=account.handle, alive=ok, detail=detail)
+    if checked:
+        log.info("health_sweep.done", checked=checked)
+    return checked

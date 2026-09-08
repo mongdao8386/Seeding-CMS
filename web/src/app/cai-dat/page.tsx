@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, type Platform, type Slot, type SlotMeta } from "@/lib/api";
-import { Empty, ErrorNote, PLATFORM_LABEL, PageTitle, useLoad } from "@/components/ui";
+import { api, type Platform, type Settings, type Slot, type SlotMeta, type SystemStatus } from "@/lib/api";
+import { ErrorNote, PLATFORM_LABEL, PageTitle, useLoad } from "@/components/ui";
 
-/** Cài đặt — phần 2: giờ vàng. Nuôi / cảnh báo / signer vào ở phần 4. */
+/** Cài đặt: giờ vàng (sửa được), nhịp nuôi và trạng thái hệ thống (đọc từ .env). */
 export default function SettingsPage() {
   const [platform, setPlatform] = useState<Platform>("tiktok");
   const slots = useLoad(() => api.get<Slot[]>("/slots"), []);
   const meta = useLoad(() => api.get<SlotMeta>("/slots/meta"), []);
+  const settings = useLoad(() => api.get<Settings>("/settings"), []);
+  const sys = useLoad(() => api.get<SystemStatus>("/system"), []);
+  const [alertNote, setAlertNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -39,8 +42,58 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <div className="mt-5">
-        <Empty>Nhịp nuôi, cảnh báo Telegram và trạng thái signer vào ở phần 4.</Empty>
+      <div className="mt-5 grid gap-5 md:grid-cols-2">
+        <section className="card flex flex-col gap-3 p-5">
+          <div className="text-[15px] font-semibold">Nuôi tài khoản</div>
+          <div className="text-[13px] text-muted">Đọc từ <span className="mono">.env</span> — đổi ở đó rồi bật lại.</div>
+          {settings.data ? (
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+              <dt className="text-muted">Ngày im lặng — chỉ tương tác, không đăng</dt>
+              <dd className="mono">{settings.data.warmup_quiet_days}</dd>
+              <dt className="text-muted">Ngày tăng nhịp — từ 1 bài lên trần</dt>
+              <dd className="mono">{settings.data.warmup_days}</dd>
+              <dt className="text-muted">Trần bài / ngày</dt>
+              <dd className="mono">{settings.data.default_daily_cap}</dd>
+              <dt className="text-muted">Kiểm phiên mỗi</dt>
+              <dd className="mono">{settings.data.health_check_interval_hours} giờ</dd>
+              <dt className="text-muted">Hỏng liên tiếp bao lần thì gọi người</dt>
+              <dd className="mono">{settings.data.health_fail_threshold}</dd>
+              <dt className="text-muted">Múi giờ lịch</dt>
+              <dd className="mono">{settings.data.schedule_timezone}</dd>
+            </dl>
+          ) : (
+            <p className="text-muted">…</p>
+          )}
+          <p className="text-xs text-faint">Thả tim 4–8, follow 1–3, bình luận 0–2 mỗi ngày; ngày đầu một nửa. Sửa trong platforms/tiktok/warm.py.</p>
+        </section>
+
+        <section className="card flex flex-col gap-3 p-5">
+          <div className="text-[15px] font-semibold">Hệ thống</div>
+          <Row ok={!!sys.data?.api} text={sys.data ? "API đang chạy" : "API không trả lời"} />
+          <Row ok={!!sys.data?.database} text="Cơ sở dữ liệu" />
+          <Row ok={!!sys.data?.signer} text={`Signer TikTok · ${sys.data?.signer_detail ?? "…"}`} />
+          <Row ok={!!settings.data?.tiktok_post_via_http} text={settings.data?.tiktok_post_via_http ? "Đăng TikTok qua HTTP" : "Đăng TikTok qua HTTP: tắt"} />
+          <Row ok={!!settings.data?.tiktok_interact_via_http} text={settings.data?.tiktok_interact_via_http ? "Nuôi TikTok qua HTTP" : "Nuôi TikTok qua HTTP: tắt"} />
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <Row ok={!!settings.data?.alert_configured} text={settings.data?.alert_configured ? `Cảnh báo ${settings.data.alert_kind} khi cần bạn` : "Cảnh báo chưa bật — đặt ALERT_WEBHOOK_URL trong .env"} />
+            {settings.data?.alert_configured && (
+              <button
+                className="btn text-xs"
+                onClick={async () => {
+                  try {
+                    await api.post("/alerts/test");
+                    setAlertNote("Đã gửi tin thử.");
+                  } catch (e) {
+                    setAlertNote(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Gửi thử
+              </button>
+            )}
+          </div>
+          {alertNote && <p className="text-xs text-muted">{alertNote}</p>}
+        </section>
       </div>
     </>
   );
@@ -122,6 +175,15 @@ function SlotEditor({
         </button>
         <span className="text-xs text-muted">Bấm vào giờ để bật/tắt. Mỗi ngày nên 2–4 mốc; nhiều hơn là rải loãng.</span>
       </div>
+    </div>
+  );
+}
+
+function Row({ ok, text }: { ok: boolean; text: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className={"h-2 w-2 rounded-full " + (ok ? "bg-ok" : "bg-bad")} />
+      <span>{text}</span>
     </div>
   );
 }

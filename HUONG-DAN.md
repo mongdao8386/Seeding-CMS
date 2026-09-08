@@ -74,6 +74,28 @@ cái nào xong, cái nào hỏng.
 Tắt bằng `TIKTOK_INTERACT_VIA_HTTP=false`. Thả tim và follow được thử lại khi không rõ
 kết quả; bình luận thì không — vào "cần bạn".
 
+## 3c. Khi hệ thống dừng lại chờ bạn (phần 4)
+
+Gặp checkpoint, captcha, phiên chết hay bài đăng không rõ kết quả thì hệ thống **dừng
+tài khoản đó lại** và đưa vào hàng đợi **Cần bạn** ở đầu màn hình Tổng quan. Không tự
+thử lại, không tự đăng nhập lại — hai việc đó là cách nhanh nhất để mất acc.
+
+Mỗi dòng trong hàng đợi có: lý do, và bốn nút.
+
+- **Mở trình duyệt** — mở đúng profile, đúng proxy, bạn tự giải trên trang thật.
+- **Mã 2FA** — nếu acc có lưu `totp_seed` khi dán.
+- **Đã giải** — acc về trạng thái *đang nuôi* (đi chậm lại một nhịp, không về "hoạt động"
+  ngay). Bài bị kẹt được hẹn lại **6 tiếng sau**, không đăng liền.
+- **Bỏ tài khoản** — acc chuyển sang *chết*, không chạy gì nữa.
+
+Worker tự **kiểm phiên** mỗi giờ (mỗi lần tối đa 10 profile quá hạn 12 tiếng): gọi một
+endpoint nhẹ bằng cookie của acc qua proxy của nó. Hỏng 2 lần liên tiếp thì vào hàng đợi.
+Kết quả kiểm hiện trong dòng thời gian của tài khoản ("Kiểm phiên: còn sống / hỏng").
+
+Cảnh báo ra ngoài: đặt `ALERT_WEBHOOK_URL` (Telegram, Discord, Slack hay webhook bất kỳ)
+và `ALERT_KIND` trong `.env`. Mỗi yêu cầu chờ người báo **một lần**, không báo lại mỗi
+vòng quét. Bấm **Gửi thử** ở Cài đặt để chắc là tin đến.
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua
@@ -87,7 +109,7 @@ thử lại có thể đăng hai lần.
 - **Signer chưa sẵn sàng** (góc trái dưới): xem cửa sổ "Seeding - Signer". Cần Chrome hoặc
   Edge trên máy.
 - **Acc "Thiếu proxy"**: dán thêm proxy.
-- **Bài "cần bạn"**: bấm vào tài khoản, mở trình duyệt, xem bài đã lên chưa trước khi lên
-  lịch lại.
+- **Bài "cần bạn"**: hàng đợi ở Tổng quan (mục 3c). Với bài đăng không rõ kết quả, mở
+  trình duyệt xem bài đã lên chưa rồi mới bấm "Đã giải".
 
 Sinh token / khoá: `python scripts/gen_api_token.py`, `python scripts/gen_vault_key.py`.
