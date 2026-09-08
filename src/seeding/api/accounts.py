@@ -24,6 +24,7 @@ from seeding.domain import readiness
 from seeding.domain.defaults import ensure_defaults
 from seeding.domain.models import (
     Account,
+    AccountRole,
     AccountStatus,
     Attempt,
     Platform,
@@ -64,6 +65,7 @@ async def list_accounts(
     q: str | None = None,
     platform: Platform | None = None,
     status: AccountStatus | None = None,
+    role: AccountRole | None = None,
     ready: bool | None = None,
     s: AsyncSession = Depends(get_session),
 ) -> Page[AccountRow]:
@@ -75,6 +77,8 @@ async def list_accounts(
         stmt = stmt.where(Account.platform == platform)
     if status is not None:
         stmt = stmt.where(Account.status == status)
+    if role is not None:
+        stmt = stmt.where(Account.role == role)
 
     # Loc theo readiness khong dich duoc thanh WHERE (no la logic Python), nen khi co
     # `ready` thi lay ca bang roi loc - doi tai khoan mot may la vai tram, chap nhan duoc.
@@ -142,6 +146,7 @@ async def import_check(
 async def import_accounts(
     text: str = Form(...),
     platform: Platform = Form(Platform.TIKTOK),
+    role: AccountRole = Form(AccountRole.CHANNEL),
     partial: bool = Form(False),
     attach_proxies: bool = Form(True),
     s: AsyncSession = Depends(get_session),
@@ -275,6 +280,8 @@ async def update_account(
         account.status = body.status
     if body.daily_cap is not None:
         account.daily_cap = body.daily_cap
+    if body.role is not None:
+        account.role = body.role
     await s.commit()
     return _row(account, account.profile, readiness.check(account, account.profile))
 

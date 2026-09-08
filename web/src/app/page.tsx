@@ -62,6 +62,10 @@ export default function Overview() {
           </div>
           <div className="h-px bg-line" />
           <div className="flex flex-col gap-2 text-muted">
+            <div className="flex justify-between">
+              <span>Xây kênh / tương tác chéo</span>
+              <span className="text-ink">{s ? `${s.channels} / ${s.boosters}` : "…"}</span>
+            </div>
             <div className="flex flex-col gap-1">
               <div className="flex justify-between">
                 <span>Đang nuôi</span>

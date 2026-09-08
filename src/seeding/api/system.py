@@ -12,7 +12,7 @@ from seeding.api.deps import get_session
 from seeding.api.schemas import StatsOut, SystemOut
 from seeding.config import get_settings
 from seeding.domain import readiness
-from seeding.domain.models import Account, AccountStatus, Profile, Proxy
+from seeding.domain.models import Account, AccountRole, AccountStatus, Profile, Proxy
 from seeding.ops import flags
 
 router = APIRouter(tags=["system"])
@@ -41,6 +41,8 @@ async def stats(s: AsyncSession = Depends(get_session)) -> StatsOut:
         ).scalar_one()
     )
     return StatsOut(
+        channels=sum(1 for a in accounts if a.role is AccountRole.CHANNEL),
+        boosters=sum(1 for a in accounts if a.role is AccountRole.BOOSTER),
         accounts=len(accounts),
         ready=sum(1 for a in live if verdicts[a.id].ready),
         blocked=sum(1 for a in live if not verdicts[a.id].ready),

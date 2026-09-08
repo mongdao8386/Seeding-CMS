@@ -150,6 +150,7 @@ def get_health(platform: Platform) -> HealthCheck | None:
 _MODULES = (
     "seeding.platforms.tiktok.publish",
     "seeding.platforms.tiktok.interact",
+    "seeding.platforms.tiktok.interact_browser",
     "seeding.platforms.tiktok.warm",
     "seeding.platforms.tiktok.manage",
     "seeding.platforms.instagram.publish",

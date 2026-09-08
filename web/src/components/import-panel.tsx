@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type ImportCheck, type ImportResult, type Platform, type ProxyImportResult } from "@/lib/api";
 
-const PLATFORMS: Platform[] = ["tiktok", "instagram", "x"];
+import { PLATFORMS, PLATFORM_LABEL } from "@/components/ui";
 
 /**
  * Dán tài khoản theo định dạng người bán: username|password|hotmail|pass_hotmail|cookie
@@ -12,6 +12,7 @@ const PLATFORMS: Platform[] = ["tiktok", "instagram", "x"];
 export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
   const [text, setText] = useState("");
   const [platform, setPlatform] = useState<Platform>("tiktok");
+  const [role, setRole] = useState<"channel" | "booster">("channel");
   const [check, setCheck] = useState<ImportCheck | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,14 +26,14 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
     }
     const t = setTimeout(async () => {
       try {
-        setCheck(await api.form<ImportCheck>("/accounts/import/check", { text, platform }));
+        setCheck(await api.form<ImportCheck>("/accounts/import/check", { text, platform, role }));
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     }, 500);
     return () => clearTimeout(t);
-  }, [text, platform]);
+  }, [text, platform, role]);
 
   async function run(partial: boolean) {
     setBusy(true);
@@ -41,6 +42,7 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
       const r = await api.form<ImportResult>("/accounts/import", {
         text,
         platform,
+        role,
         partial,
         attach_proxies: true,
       });
@@ -68,9 +70,21 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
         <span className="text-muted">Nền tảng</span>
         {PLATFORMS.map((p) => (
           <button key={p} className="chip" data-on={platform === p} onClick={() => setPlatform(p)}>
-            {p === "tiktok" ? "TikTok" : p === "instagram" ? "Instagram" : "X"}
+            {PLATFORM_LABEL[p]}
           </button>
         ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted">Loại</span>
+        <button className="chip" data-on={role === "channel"} onClick={() => setRole("channel")}>
+          Xây kênh
+        </button>
+        <button className="chip" data-on={role === "booster"} onClick={() => setRole("booster")}>
+          Tương tác chéo
+        </button>
+        <span className="text-xs text-faint">
+          {role === "booster" ? "Chỉ thả tim / follow / bình luận vào bài của acc xây kênh. Không đăng, không cần proxy." : "Đăng bài, nuôi, được đội tương tác chéo đẩy. Cần proxy."}
+        </span>
       </div>
 
       <textarea

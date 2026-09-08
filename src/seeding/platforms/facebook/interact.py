@@ -20,7 +20,7 @@ from seeding.content.comments import comment_text
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
 from seeding.platforms.facebook.publish import COMMENT
-from seeding.platforms.outreach import ensure_proxy_loaded
+from seeding.platforms.outreach import direct_ok, ensure_proxy_loaded
 
 log = structlog.get_logger(__name__)
 
@@ -65,7 +65,7 @@ async def run(
 ) -> InteractResult:
     rng = rng or random.Random()
     await ensure_proxy_loaded(session, profile)
-    if profile is None or profile.proxy is None:
+    if profile is None or (profile.proxy is None and not direct_ok(job)):
         return InteractResult(False, "profile has no proxy - refusing to touch Facebook")
     if not profile.cookies_enc:
         return InteractResult(False, "profile has never signed in")

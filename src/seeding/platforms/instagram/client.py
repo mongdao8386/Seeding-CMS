@@ -206,8 +206,10 @@ def classify_exc(exc: BaseException, *, idempotent: bool) -> ActionResult:
 
 
 class InstagramClient:
-    def __init__(self, profile: Profile, *, client_factory=Client) -> None:
-        if profile.proxy is None:
+    def __init__(
+        self, profile: Profile, *, client_factory=Client, allow_direct: bool = False
+    ) -> None:
+        if profile.proxy is None and not allow_direct:
             raise ValueError("profile has no proxy - refusing to touch Instagram from the host IP")
         self.profile = profile
         self._factory = client_factory
@@ -222,7 +224,8 @@ class InstagramClient:
         stored = stored_device(self.profile)
         if stored:
             c.set_settings(stored)
-        c.set_proxy(proxy_dsn(self.profile.proxy))
+        if self.profile.proxy is not None:
+            c.set_proxy(proxy_dsn(self.profile.proxy))
         if not stored:
             # Dia phuong hoa Viet Nam cho thiet bi moi; thiet bi da luu giu nguyen.
             c.set_locale("vi_VN")

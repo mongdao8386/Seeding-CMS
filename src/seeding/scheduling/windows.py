@@ -20,8 +20,13 @@ ACTIVE_TO = time(23, 0)
 
 
 def _at(day: date, hour: int) -> datetime:
-    """`hour` trong `day`, nhan ca 24 = nua dem ket thuc ngay (time(24) khong ton tai)."""
-    return datetime.combine(day, time.min, tzinfo=UTC) + timedelta(hours=hour)
+    """`hour` trong `day` theo GIO DIA PHUONG (SCHEDULE_TIMEZONE), tra ve UTC. Nhan ca
+    24 = nua dem ket thuc ngay (time(24) khong ton tai). 7h-23h phai la 7h-23h Viet Nam,
+    khong phai 7h-23h UTC = 14h-6h sang hom sau."""
+    from seeding.scheduling.slots import tz
+
+    local = datetime.combine(day, time.min, tzinfo=tz()) + timedelta(hours=hour)
+    return local.astimezone(UTC)
 
 
 async def window_for(

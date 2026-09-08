@@ -20,7 +20,7 @@ from seeding.config import get_settings
 from seeding.content.comments import COMMENTS, warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
-from seeding.platforms.outreach import ensure_proxy_loaded, watch_seconds
+from seeding.platforms.outreach import client_kwargs, direct_ok, ensure_proxy_loaded, watch_seconds
 from seeding.platforms.x.client import ActionResult, XClient, classify_exc
 
 log = structlog.get_logger(__name__)
@@ -78,7 +78,7 @@ async def run(
     sleep=asyncio.sleep,
 ) -> InteractResult:
     await ensure_proxy_loaded(session, profile)
-    if profile.proxy is None:
+    if profile.proxy is None and not direct_ok(job):
         return InteractResult(False, "profile has no proxy - refusing to touch X from the host IP")
 
     handle, tweet_id = parse_target(job.target_url)
@@ -95,7 +95,7 @@ async def run(
         return InteractResult(False, "follow job has no target handle")
 
     try:
-        async with client_factory(profile) as x:
+        async with client_factory(profile, **client_kwargs(job)) as x:
             if job.kind is ActivityKind.FOLLOW:
                 user_id = await x.user_id(handle)
                 if not user_id:

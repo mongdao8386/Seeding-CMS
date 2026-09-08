@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # Tha tim / theo doi / binh luan tren TikTok bang HTTP (core/tiktok_interact) thay vi
     # trinh duyet, va lap lich nuoi huong ra ngoai tren For You (core/outreach).
     tiktok_interact_via_http: bool = True
+    # Tha tim / follow / binh luan / dang lai TikTok bang gi: browser | http. Do that
+    # 08/09/2026: cong ghi cua web TikTok tra 200 rong cho moi bien the HTTP, con doc thi
+    # tot - nen doc/lap lich van HTTP, bam thi mo trang video trong trinh duyet cua
+    # profile (trang tu phat video = TikTok thay 30-45 giay xem that).
+    tiktok_actions: str = "browser"
     # Instagram qua aiograpi (API rieng cua app, cookie sessionid, khong trinh duyet):
     # dang bai, nuoi va kiem phien. Tat thi tai khoan Instagram chi con mo tay.
     instagram_enabled: bool = True
@@ -93,6 +98,11 @@ class Settings(BaseSettings):
     # Viet cau tra loi bang Claude khi co ANTHROPIC_API_KEY; khong co thi dung cau mau.
     chatbot_model: str = "claude-sonnet-5"
     anthropic_api_key: str = ""
+
+    # Tuong tac cheo noi bo: moi bai cua tai khoan xay kenh nhan toi da bao nhieu luot
+    # tha tim tu doi booster MOI NGAY. Nghin tai khoan dap vao mot bai trong mot gio la
+    # dau vet ro nhat.
+    boost_per_post_cap: int = 30
 
     # Nuoi: binh luan kieu gi - sticker (chi emoji, mac dinh), text (cau tieng Viet), mixed.
     warm_comment_style: str = "sticker"

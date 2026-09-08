@@ -26,7 +26,7 @@ from seeding.config import get_settings
 from seeding.content.comments import COMMENTS, comment_text, warm_comment
 from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
 from seeding.platforms.base import InteractResult, register_interact
-from seeding.platforms.outreach import ensure_proxy_loaded, watch_seconds
+from seeding.platforms.outreach import client_kwargs, direct_ok, ensure_proxy_loaded, watch_seconds
 from seeding.platforms.tiktok.web import ActionResult, TikTokWeb
 
 log = structlog.get_logger(__name__)
@@ -69,7 +69,7 @@ async def run(
     sleep=asyncio.sleep,
 ) -> InteractResult:
     await ensure_proxy_loaded(session, profile)
-    if profile.proxy is None:
+    if profile.proxy is None and not direct_ok(job):
         return InteractResult(
             False, "profile has no proxy - refusing to touch TikTok from the host IP"
         )
@@ -87,7 +87,7 @@ async def run(
     # Xem truoc, bam sau. Mo trang (item detail / user detail) nhu trinh duyet lam, roi
     # cho dung thoi gian xem cua job (30-45 giay voi tha tim) moi hanh dong.
     try:
-        async with web_factory(profile) as tt:
+        async with web_factory(profile, **client_kwargs(job)) as tt:
             if job.kind is ActivityKind.FOLLOW:
                 user = await tt.user(handle)
                 if not user["id"] or not user["secUid"]:
@@ -122,7 +122,7 @@ async def run(
     return result
 
 
-if get_settings().tiktok_interact_via_http:
+if get_settings().tiktok_interact_via_http and get_settings().tiktok_actions == "http":
     register_interact(Platform.TIKTOK, run)
 
 

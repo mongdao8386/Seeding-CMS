@@ -41,6 +41,21 @@ export default function AccountPage() {
     }
   }
 
+  async function setRole(role: "channel" | "booster") {
+    if (!a) return;
+    const msg =
+      role === "booster"
+        ? "Chuyển sang tương tác chéo? Acc này sẽ không đăng bài, không nuôi ra ngoài, chỉ đẩy bài của các acc xây kênh (không cần proxy)."
+        : "Chuyển sang xây kênh? Acc này sẽ cần proxy, đăng bài và nuôi ra ngoài như bình thường.";
+    if (!confirm(msg)) return;
+    try {
+      await api.patch(`/accounts/${a.id}`, { role });
+      acc.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <>
       <div className="mb-5 flex items-center gap-2 text-sm text-muted">
@@ -63,6 +78,8 @@ export default function AccountPage() {
                 <div className="flex flex-wrap gap-x-3 text-muted">
                   <span>{PLATFORM_LABEL[a.platform]}</span>
                   <span>·</span>
+                  <span className={a.role === "booster" ? "text-accent-dark" : ""}>{a.role === "booster" ? "tương tác chéo" : "xây kênh"}</span>
+                  <span>·</span>
                   <span>
                     proxy <span className="mono">{a.proxy_label ?? "chưa có"}</span>
                   </span>
@@ -72,6 +89,9 @@ export default function AccountPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button className="btn" onClick={() => setRole(a.role === "booster" ? "channel" : "booster")}>
+                {a.role === "booster" ? "Chuyển sang xây kênh" : "Chuyển sang tương tác chéo"}
+              </button>
               {a.status === "paused" ? (
                 <button className="btn" onClick={() => setStatus("warming")}>
                   Chạy lại

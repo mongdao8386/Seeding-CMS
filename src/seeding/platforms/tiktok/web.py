@@ -193,8 +193,9 @@ class TikTokWeb:
         *,
         signer: Signer | None = None,
         client_factory: ClientFactory = _default_client,
+        allow_direct: bool = False,
     ) -> None:
-        if profile.proxy is None:
+        if profile.proxy is None and not allow_direct:
             raise ValueError("profile has no proxy - refusing to touch TikTok from the host IP")
         self.profile = profile
         self.signer = signer or Signer()
@@ -202,6 +203,7 @@ class TikTokWeb:
         self.cookies = cookie_dict(profile.get_cookies())
         self.user_agent = ""
         self._client: httpx.AsyncClient | None = None
+        self._secsdk: str | None = None
 
     async def __aenter__(self) -> TikTokWeb:
         self.user_agent = await self.signer.user_agent()
@@ -212,7 +214,9 @@ class TikTokWeb:
             "Origin": ORIGIN,
         }
         self._client = self._factory(
-            proxy=proxy_url(self.profile.proxy), cookies=self.cookies, headers=headers
+            proxy=proxy_url(self.profile.proxy) if self.profile.proxy else None,
+            cookies=self.cookies,
+            headers=headers,
         )
         await self._client.__aenter__()
         return self
@@ -223,20 +227,58 @@ class TikTokWeb:
 
     # ------------------------------------------------------------- ha tang
 
-    async def _signed(self, path: str, extra: dict[str, str]) -> str:
+    async def _signed(self, path: str, extra: dict[str, str], *, fresh_token: bool = False) -> str:
+        """Ky URL. `fresh_token`: bo msToken cua tai khoan (da cu) de signer dien msToken
+        cua phien trinh duyet no dang giu, va tu do dung token do cho ca cookie lan query.
+
+        msToken TikTok cap cho trinh duyet song vai gio; cookie dan vao tu hom truoc
+        thi token da chet, TikTok tra 200 rong cho moi request. Signer chay mot phien
+        that voi webmssdk nen luon co token song - dung no thay vi doi nguoi dan lai."""
         q = {**base_params(self.profile, self.cookies, self.user_agent), **extra}
-        return (await self.signer.sign(f"{ORIGIN}{path}?{urlencode(q)}"))["signed_url"]
+        if fresh_token:
+            q.pop("msToken", None)
+        data = await self.signer.sign(f"{ORIGIN}{path}?{urlencode(q)}")
+        if fresh_token and data.get("msTokenUsed"):
+            token = str(data["msTokenUsed"])
+            self.cookies["msToken"] = token
+            if self._client is not None:
+                self._client.cookies.set("msToken", token, domain=".tiktok.com")
+            log.info("tiktok_web.mstoken_refreshed", profile=str(self.profile.id))
+        return data["signed_url"]
+
+    def _adopt_mstoken(self, response) -> bool:
+        """TikTok tra 200 rong + Set-Cookie msToken moi khi token cu het han: nhan token
+        do cho ca cookie lan query, gui lai la duoc. Do that 08/09/2026 tren digg."""
+        token = None
+        for raw in response.headers.get_list("set-cookie"):
+            if raw.startswith("msToken="):
+                token = raw.split(";", 1)[0].split("=", 1)[1]
+        if not token or self._client is None:
+            return False
+        self.cookies["msToken"] = token
+        jar = self._client.cookies
+        for c in list(jar.jar):
+            if c.name == "msToken":
+                jar.jar.clear(c.domain, c.path, c.name)
+        jar.set("msToken", token, domain=".tiktok.com")
+        log.info("tiktok_web.mstoken_rotated", profile=str(self.profile.id))
+        return True
 
     async def _get(self, path: str, extra: dict[str, str]) -> dict:
         """GET co thu lai: doc thi lam lai bao nhieu lan cung khong de lai gi.
 
-        200 rong la kieu tu choi cua TikTok khi chu ky/msToken lech - do that: lan dau
-        sau khi signer khoi dong hay rong, lan hai la co. Ky lai URL moi lan thu.
+        200 rong la kieu tu choi cua TikTok khi chu ky/msToken lech. Lan dau ky voi
+        msToken cua tai khoan; rong thi lan sau bo token do, lay token song cua signer.
         """
         assert self._client is not None
         last = "no response"
-        for _ in range(READ_TRIES):
-            url = await self._signed(path, extra)
+        # Thu tu do that 08/09/2026: token cua tai khoan (cu) -> rong; token cua phien
+        # signer -> co; token TikTok vua cap trong Set-Cookie -> van rong voi doc. Nen
+        # lan 2 dung token signer, lan 3 moi thu token Set-Cookie (neu co).
+        adopted = False
+        for attempt in range(READ_TRIES):
+            use_signer_token = attempt == 1 or (attempt >= 2 and not adopted)
+            url = await self._signed(path, extra, fresh_token=use_signer_token)
             try:
                 r = await self._client.get(url)
             except httpx.TransportError as exc:
@@ -249,6 +291,8 @@ class TikTokWeb:
                     last = f"non-JSON {r.status_code}: {r.text[:120]}"
                     continue
             last = f"empty {r.status_code}"
+            if attempt == 1:
+                adopted = self._adopt_mstoken(r)
         raise RuntimeError(f"{path}: {last}")
 
     async def _post(
@@ -262,18 +306,34 @@ class TikTokWeb:
         """Mot hanh dong. Gui DUNG MOT lan; ket qua khong ro thi tuy `idempotent`."""
         assert self._client is not None
         url = await self._signed(path, extra)
-        headers = {"tt-csrf-token": self.cookies.get("tt_csrf_token", ""), **(extra_headers or {})}
-        try:
-            r = await self._client.post(url, headers=headers)
-        except httpx.TransportError as exc:
-            # Khong biet request co toi noi khong.
-            return ActionResult(
-                False,
-                f"{type(exc).__name__} while posting to {path}",
-                retryable=idempotent,
-                needs_human=not idempotent,
-            )
-        if not r.content:
+        # Endpoint ghi (tha tim, follow, binh luan, xoa) doi x-secsdk-csrf-token ngoai
+        # tt-csrf-token. Lay mot lan cho ca phien; khong lay duoc thi van gui, de body
+        # TikTok tra ve noi ro.
+        if self._secsdk is None:
+            self._secsdk = await self.secsdk_csrf()
+        headers = {"tt-csrf-token": self.cookies.get("tt_csrf_token", "")}
+        if self._secsdk:
+            headers["x-secsdk-csrf-token"] = self._secsdk
+        headers.update(extra_headers or {})
+        for attempt in range(2):
+            if attempt:
+                url = await self._signed(path, extra)
+            try:
+                r = await self._client.post(url, headers=headers)
+            except httpx.TransportError as exc:
+                # Khong biet request co toi noi khong.
+                return ActionResult(
+                    False,
+                    f"{type(exc).__name__} while posting to {path}",
+                    retryable=idempotent,
+                    needs_human=not idempotent,
+                )
+            if r.content:
+                break
+            # 200 rong kem msToken moi = TikTok tu choi vi token cu, KHONG lam gi ca.
+            # Nhan token moi, ky lai, gui lai dung mot lan.
+            if attempt == 0 and self._adopt_mstoken(r):
+                continue
             return ActionResult(
                 False,
                 f"{path}: empty {r.status_code} response (signature or session rejected)",
@@ -397,7 +457,7 @@ class TikTokWeb:
                 f"{ORIGIN}/passport/web/account/info/",
                 headers={"x-secsdk-csrf-request": "1", "x-secsdk-csrf-version": "1.2.8"},
             )
-        except httpx.TransportError:
+        except Exception:
             return ""
         parts = r.headers.get("x-ware-csrf-token", "").split(",")
         return parts[1] if len(parts) > 1 and parts[0] == "0" else ""

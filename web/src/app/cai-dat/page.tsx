@@ -83,7 +83,8 @@ export default function SettingsPage() {
           <Row ok={!!sys.data?.database} text="Cơ sở dữ liệu" />
           <Row ok={!!sys.data?.signer} text={`Signer TikTok · ${sys.data?.signer_detail ?? "…"}`} />
           <Row ok={!!settings.data?.tiktok_post_via_http} text={settings.data?.tiktok_post_via_http ? "Đăng TikTok qua HTTP" : "Đăng TikTok qua HTTP: tắt"} />
-          <Row ok={!!settings.data?.tiktok_interact_via_http} text={settings.data?.tiktok_interact_via_http ? "Nuôi TikTok qua HTTP" : "Nuôi TikTok qua HTTP: tắt"} />
+          <Row ok={!!settings.data?.tiktok_interact_via_http} text={settings.data?.tiktok_interact_via_http ? "Đọc feed / tìm kiếm TikTok qua HTTP" : "Đọc feed TikTok qua HTTP: tắt"} />
+          <Row ok={true} text={settings.data?.tiktok_actions === "browser" ? "Thả tim / follow / bình luận TikTok bằng trình duyệt (xem thật 30–45s)" : "Thả tim / follow TikTok qua HTTP (cổng ghi đang chặn)"} />
           <Row ok={!!settings.data?.instagram_enabled} text={settings.data?.instagram_enabled ? "Instagram qua API app (aiograpi)" : "Instagram: tắt"} />
           <Row ok={!!settings.data?.x_enabled} text={settings.data?.x_enabled ? "X qua twifork" : "X: tắt"} />
           <Row ok={!!settings.data?.reddit_enabled} text={settings.data?.reddit_enabled ? "Reddit qua API (script app)" : "Reddit: tắt"} />

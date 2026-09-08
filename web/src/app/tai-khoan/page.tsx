@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { api, qs, type AccountRow, type Page, type Platform, type Proxy } from "@/lib/api";
+import { api, qs, type AccountRole, type AccountRow, type Page, type Platform, type Proxy } from "@/lib/api";
 import { ImportAccounts, ImportProxies } from "@/components/import-panel";
 import {
   Avatar,
   Empty,
   ErrorNote,
-  PLATFORM_LABEL,
   PageTitle,
+  PLATFORM_LABEL,
+  PLATFORMS,
   SessionDot,
   StatusPill,
   timeAgo,
@@ -34,6 +35,7 @@ function Accounts() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [platform, setPlatform] = useState<Platform | "">("");
+  const [role, setRole] = useState<AccountRole | "">("");
   const [offset, setOffset] = useState(0);
   const [tab, setTab] = useState<"acc" | "proxy">("acc");
 
@@ -42,6 +44,7 @@ function Accounts() {
     offset,
     q,
     platform,
+    role,
     ready: filter === "ready" ? true : filter === "blocked" ? false : undefined,
     status: filter === "needs_human" ? "needs_human" : undefined,
   });
@@ -107,9 +110,29 @@ function Accounts() {
             </button>
           ))}
         </div>
+        <div className="flex gap-1.5 text-sm">
+          {(
+            [
+              ["", "Mọi loại"],
+              ["channel", "Xây kênh"],
+              ["booster", "Tương tác chéo"],
+            ] as [AccountRole | "", string][]
+          ).map(([k, label]) => (
+            <button
+              key={k || "any"}
+              className={"rounded-lg px-2.5 py-1.5 " + (role === k ? "bg-soft font-medium text-ink" : "text-muted")}
+              onClick={() => {
+                setRole(k);
+                setOffset(0);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="grow" />
         <div className="flex gap-1.5 text-sm">
-          {(["", "tiktok", "instagram", "x"] as const).map((p) => (
+          {(["", ...PLATFORMS] as const).map((p) => (
             <button
               key={p || "all"}
               className={"rounded-lg px-2.5 py-1.5 " + (platform === p ? "bg-soft font-medium text-ink" : "text-muted")}

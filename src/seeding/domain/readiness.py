@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from seeding.domain.models import Account, AccountStatus, Platform, Profile
+from seeding.domain.models import Account, AccountRole, AccountStatus, Platform, Profile
 
 # Reddit di bang API: khong can profile, khong can proxy, khong can cookie.
 API_PLATFORMS = frozenset({Platform.REDDIT})
@@ -52,8 +52,9 @@ def check(account: Account, profile: Profile | None) -> Readiness:
 
     if profile is None:
         return Readiness(False, "no profile yet")
-    if profile.proxy_id is None:
+    if profile.proxy_id is None and account.role is not AccountRole.BOOSTER:
         # Day la cai bay: no KHONG lam job that bai. No lam job chay bang IP that.
+        # Booster (tuong tac cheo) la ngoai le co chu y: nguoi van hanh chon khong proxy.
         return Readiness(False, "no proxy — it would go out on your own IP")
     if not profile.cookies_enc:
         return Readiness(False, "never signed in — import a cookie or run login_profile.py")

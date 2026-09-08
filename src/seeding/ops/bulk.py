@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from seeding.domain.models import Account, AccountStatus, Persona, Platform
+from seeding.domain.models import Account, AccountRole, AccountStatus, Persona, Platform
 from seeding.ops import cookies as cookies_mod
 
 REQUIRED = ("platform", "handle")
@@ -52,7 +52,22 @@ SECRET_FIELDS = (
 
 # `cookie` KHONG nam trong SECRET_FIELDS: no khong di vao vault cua Account ma di vao
 # cookie jar cua Profile. Xu ly rieng trong `apply`.
-KNOWN = set(REQUIRED) | {"persona", "daily_cap", "start_warmup", "cookie"} | set(SECRET_FIELDS)
+KNOWN = (
+    set(REQUIRED) | {"persona", "daily_cap", "start_warmup", "cookie", "role"} | set(SECRET_FIELDS)
+)
+
+# Cot `role`: channel (xay kenh, mac dinh) | booster (tuong tac cheo). Nhan ca tieng Viet.
+_BOOSTER_WORDS = {"booster", "boost", "tuong tac", "tương tác", "tuongtac", "cheo", "chéo", "b"}
+
+
+def parse_role(raw: str | None, default: AccountRole = AccountRole.CHANNEL) -> AccountRole:
+    v = (raw or "").strip().lower()
+    if not v:
+        return default
+    if any(w in v for w in _BOOSTER_WORDS):
+        return AccountRole.BOOSTER
+    return AccountRole.CHANNEL
+
 
 # Ten cot ma nguoi ban acc hay dung, doi sang ten cua he thong. Bat nguoi dung sua lai
 # dong tieu de cua mot file 500 dong la mot buoc thua khong mua duoc gi.
@@ -85,6 +100,7 @@ class Row:
     persona: str | None
     daily_cap: int
     start_warmup: bool
+    role: AccountRole = AccountRole.CHANNEL
     secrets: dict = field(default_factory=dict)
     # Chuoi cookie nguyen van. Doc thanh phien that o buoc TAO, nhung van duoc THU doc
     # o buoc kiem - xem `cookie_note`.
@@ -145,7 +161,11 @@ def sniff_delimiter(text: str) -> str:
     return best if counts[best] else ","
 
 
-def parse(text: str, default_platform: Platform | None = None) -> Report:
+def parse(
+    text: str,
+    default_platform: Platform | None = None,
+    default_role: AccountRole = AccountRole.CHANNEL,
+) -> Report:
     """Doc va kiem ca file. Khong cham database.
 
     Dong hong khong lam dung ca file: nguoi dung can thay HET moi loi trong mot lan,
@@ -297,6 +317,7 @@ def parse(text: str, default_platform: Platform | None = None) -> Report:
                 persona=row.get("persona") or None,
                 daily_cap=daily_cap,
                 start_warmup=start_warmup,
+                role=parse_role(row.get("role"), default_role),
                 secrets={k: row[k] for k in SECRET_FIELDS if row.get(k)},
                 cookie=raw_cookie,
                 cookie_note=cookie_note,
@@ -405,6 +426,7 @@ async def apply(
             platform=row.platform,
             handle=row.handle,
             daily_cap=row.daily_cap,
+            role=row.role,
         )
         if row.secrets:
             account.set_secrets(row.secrets)

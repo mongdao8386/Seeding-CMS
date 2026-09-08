@@ -119,6 +119,7 @@ async def settings_out() -> SettingsOut:
         chatbot_interval_minutes=st.chatbot_interval_minutes,
         chatbot_last=await flags.get_flag("chatbot:last"),
         warm_comment_style=st.warm_comment_style,
+        tiktok_actions=st.tiktok_actions,
         warm_keywords=[k.strip() for k in st.warm_keywords.split(",") if k.strip()],
     )
 

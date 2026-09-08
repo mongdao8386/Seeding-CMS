@@ -42,6 +42,27 @@ OK — **một acc một proxy, không dùng chung, không đổi**. Hết proxy
 Bấm vào một tài khoản → **Mở trình duyệt**: cửa sổ thật với đúng proxy, cookie, fingerprint
 của acc đó. Đăng nhập tay, giải captcha, xem gì cũng được; đóng cửa sổ là cookie được lưu.
 
+## 2b. Hai loại tài khoản: xây kênh và tương tác chéo (phần 11)
+
+- **Xây kênh** (mặc định): đăng bài, nuôi hướng ra ngoài (For You + từ khoá), chatbot,
+  đổi danh tính — và **được đội tương tác chéo đẩy**.
+- **Tương tác chéo** (booster): chỉ thả tim / follow / bình luận sticker / đăng lại vào
+  **bài của tài khoản xây kênh**. Không đăng bài, không nuôi ra ngoài, không chatbot.
+  **Không cần proxy** — đây là lựa chọn có chủ ý của bạn: cả nghìn acc đi từ một IP là
+  dấu vết rõ, nên đội này nên nằm trên máy/mạng khác với đội xây kênh.
+
+Chọn loại khi **Dán tài khoản** (nút "Xây kênh / Tương tác chéo" trên hộp dán, hoặc cột
+`role` trong file: `channel` | `booster`, nhận cả tiếng Việt "tương tác chéo"). Đổi sau
+ở Chi tiết tài khoản. Màn Tài khoản lọc được theo loại; Tổng quan đếm riêng.
+
+Nhịp của booster mỗi ngày: thả tim 2–5 bài (xem 30–45 giây mỗi bài), follow 1–2 kênh
+chưa follow, bình luận sticker 0–1, đăng lại 0–1 (từ ngày thứ 2). Bài chọn từ những lần
+đăng đã lên trong 7 ngày, ưu tiên bài mới, **mỗi bài mỗi ngày nhận tối đa
+`BOOST_PER_POST_CAP` (30) lượt tim từ đội booster** — nghìn acc dồn vào một bài trong
+một giờ là cách nhanh nhất để bài bị bóp. Lịch rải trong khung giờ thức của nền tảng,
+mỗi booster một giờ khác nhau. Việc bấm dùng đúng đường của nền tảng (TikTok: trình
+duyệt, mở video thật; IG/X/Reddit: API).
+
 ## 3. Nội dung & Lịch (phần 2)
 
 **Thêm bài**: kéo video vào, viết caption. Dùng `{a|b|c}` để mỗi tài khoản một câu khác
@@ -67,11 +88,19 @@ trong ngày: 4–8 thả tim, 1–3 follow creator, 0–2 bình luận (ngày đ
 luận). Bình luận chỉ vào video đã thả tim, sau ít nhất 8 phút, câu lấy từ bộ tiếng Việt
 đời thường trong `platforms/tiktok/interact.py`.
 
-**Xem trước, bấm sau.** Mỗi lần thả tim, worker mở trang video (như trình duyệt làm) rồi
-**chờ 30–45 giây** mới bấm tim; follow thì mở trang cá nhân, xem 10–20 giây; bình luận
-mở lại video, 20–40 giây rồi mới gõ; đăng lại 8–20 giây. Không có gì được bấm ngay giây
-đầu tiên sau khi đọc feed — đó là nhịp của máy. Thời gian xem nằm trong từng job
-(`duration_seconds`), nhìn được ở dòng thời gian.
+**Xem trước, bấm sau.** Mỗi lần thả tim, worker mở trang video rồi **chờ 30–45 giây** mới
+bấm tim; follow thì mở trang cá nhân, xem 10–20 giây; bình luận mở lại video, 20–40 giây
+rồi mới gõ; đăng lại xem 30–45 giây. Không có gì được bấm ngay giây đầu tiên sau khi đọc
+feed — đó là nhịp của máy. Thời gian xem nằm trong từng job (`duration_seconds`), nhìn
+được ở dòng thời gian.
+
+**TikTok bấm bằng trình duyệt.** Đo thật 08/09/2026: đọc feed / tìm kiếm / chi tiết video
+qua HTTP chạy 1–3 giây và tốt, nhưng **cổng ghi** (thả tim, follow, bình luận) trả 200
+rỗng cho mọi biến thể HTTP — kể cả với CSRF token thật và msToken TikTok vừa cấp. Nên
+chọn đích và lập lịch vẫn HTTP, còn bấm thì mở đúng trang video trong Camoufox với
+profile + proxy của acc: trang tự phát video, TikTok thật sự thấy 30–45 giây xem, rồi
+mới bấm. Chậm (mỗi trang 1,5–5 phút qua proxy dân cư) nhưng là đường duy nhất đã lên
+được. `TIKTOK_ACTIONS=http` để quay lại đường HTTP nếu TikTok mở cổng.
 
 **Đăng lại (repost)**: 0–1 lần/ngày, chỉ từ ngày thứ 2 của warm-up, chỉ video đã thả
 tim, xem lại 30–45 giây, sau thả tim ít nhất 3 phút, và không trùng video đã bình luận.

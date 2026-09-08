@@ -8,6 +8,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 
 from seeding.domain.models import (
+    AccountRole,
     AccountStatus,
     JobStatus,
     MediaKind,
@@ -45,6 +46,7 @@ class AccountRow(BaseModel):
     platform: Platform
     handle: str
     status: AccountStatus
+    role: AccountRole = AccountRole.CHANNEL
     daily_cap: int
     warmup_started_at: datetime | None
     last_posted_at: datetime | None
@@ -75,6 +77,7 @@ class AccountDetail(AccountRow):
 class AccountPatch(BaseModel):
     status: AccountStatus | None = None
     daily_cap: int | None = None
+    role: AccountRole | None = None
 
 
 class ImportResult(BaseModel):
@@ -144,6 +147,9 @@ class OpenProfileOut(BaseModel):
 
 
 class StatsOut(BaseModel):
+    # Hai loai tai khoan: xay kenh / tuong tac cheo (booster).
+    channels: int = 0
+    boosters: int = 0
     accounts: int
     ready: int
     blocked: int
@@ -430,4 +436,5 @@ class SettingsOut(BaseModel):
     chatbot_interval_minutes: int
     chatbot_last: dict | None = None
     warm_comment_style: str = "sticker"
+    tiktok_actions: str = "browser"
     warm_keywords: list[str] = []

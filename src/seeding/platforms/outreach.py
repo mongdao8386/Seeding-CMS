@@ -30,6 +30,7 @@ from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
 from seeding.domain.models import (
     Account,
+    AccountRole,
     AccountStatus,
     ActivityJob,
     ActivityKind,
@@ -305,6 +306,7 @@ async def plan_platform(
     """Moi tai khoan cua nen tang dang nuoi hoac dang hoat dong, co profile san sang."""
     stmt = select(Account.id, Account.handle).where(
         Account.platform == platform,
+        Account.role == AccountRole.CHANNEL,
         Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
     )
     # Lay id + handle thanh tuple TRUOC vong lap. Sau mot `rollback()` moi object ORM
@@ -364,6 +366,16 @@ def is_outward(job: ActivityJob) -> bool:
         ActivityKind.COMMENT,
         ActivityKind.REPOST,
     }
+
+
+def direct_ok(job: ActivityJob) -> bool:
+    """Booster (tuong tac cheo) duoc di khong proxy - lua chon co chu y cua nguoi van hanh."""
+    account = job.__dict__.get("account")
+    return account is not None and account.role is AccountRole.BOOSTER
+
+
+def client_kwargs(job: ActivityJob) -> dict:
+    return {"allow_direct": True} if direct_ok(job) else {}
 
 
 async def ensure_proxy_loaded(session: AsyncSession, profile: Profile | None) -> None:

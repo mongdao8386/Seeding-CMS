@@ -17,6 +17,7 @@ from seeding.domain import readiness
 from seeding.domain.defaults import ensure_defaults
 from seeding.domain.models import (
     Account,
+    AccountRole,
     Attempt,
     Campaign,
     CampaignGroup,
@@ -111,6 +112,11 @@ async def schedule(body: ScheduleIn, s: AsyncSession = Depends(get_session)) -> 
     )
     if len(accounts) != len(set(body.account_ids)):
         raise HTTPException(404, "Có tài khoản không tồn tại.")
+    boosters = [a.handle for a in accounts if a.role is AccountRole.BOOSTER]
+    if boosters:
+        raise HTTPException(
+            422, "Tài khoản tương tác chéo không đăng bài: " + ", ".join(boosters[:10])
+        )
     platforms = {a.platform for a in accounts}
     if len(platforms) != 1:
         raise HTTPException(422, "Một lần lên lịch chỉ cho một nền tảng.")

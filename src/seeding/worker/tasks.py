@@ -187,6 +187,7 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
 
             profile.proxy = await session.get(Proxy, profile.proxy_id)
 
+        await session.commit()  # khong giu giao dich mo trong luc dang bai
         result = await adapter.publish(job.account, job.variant, job.target, profile=profile)
 
         attempt.finished_at = datetime.now(UTC)
@@ -250,6 +251,14 @@ async def plan_activity(ctx: dict) -> int:
                     platform=platform.value,
                     error=f"{type(exc).__name__}: {exc}",
                 )
+        # Tuong tac cheo noi bo: booster -> bai cua tai khoan xay kenh.
+        from seeding.platforms import boost
+
+        try:
+            created += await boost.plan_all(session)
+        except Exception as exc:
+            await session.rollback()
+            log.warning("plan_activity.boost_failed", error=f"{type(exc).__name__}: {exc}")
     if created:
         log.info("plan_activity.done", outward=created)
     return created
@@ -313,6 +322,11 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             await session.commit()
             log.warning("activity.not_ready", handle=job.account.handle, reason=verdict.reason)
             return job.status.value
+
+        # Ket thuc giao dich TRUOC khi ra mang: mot job trinh duyet keo 2-6 phut, giu
+        # transaction mo ngan ay lau la giu khoa tren bang accounts - migration va ca API
+        # dung lai cho no (da xay ra that 08/09/2026). expire_on_commit=False nen object van dung.
+        await session.commit()
 
         if job.kind is ActivityKind.IDENTITY:
             runner = adapters.get_identity(job.account.platform)
@@ -384,6 +398,7 @@ async def health_sweep(ctx: dict) -> int:
             if profile.proxy_id is not None and "proxy" not in profile.__dict__:
                 profile.proxy = await session.get(Proxy, profile.proxy_id)
             # Nen tang co duong kiem nhe (HTTP qua proxy) thi dung; khong thi mo trinh duyet.
+            await session.commit()  # kiem phien co the mo trinh duyet: khong giu giao dich
             checker = adapters.get_health(account.platform)
             try:
                 if checker is not None:
@@ -435,7 +450,7 @@ async def _library_broken(platform, detail: str) -> None:
 async def chatbot_tick(ctx: dict) -> int:
     """Moi tai khoan dang chay tren nen tang co kenh chatbot -> mot job run_chatbot.
     _job_id theo phut de hai tick khong xep trung."""
-    from seeding.domain.models import Account, AccountStatus
+    from seeding.domain.models import Account, AccountRole, AccountStatus
 
     settings = get_settings()
     if not settings.chatbot_enabled:
@@ -450,6 +465,7 @@ async def chatbot_tick(ctx: dict) -> int:
             await session.execute(
                 select(Account.id).where(
                     Account.platform.in_(list(channels)),
+                    Account.role == AccountRole.CHANNEL,
                     Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
                 )
             )

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from seeding.config import get_settings
 from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
-from seeding.domain.models import Account, AccountStatus, Platform
+from seeding.domain.models import Account, AccountRole, AccountStatus, Platform
 from seeding.platforms import outreach
 from seeding.platforms.base import register_warm
 from seeding.platforms.reddit.client import MIN_SCORE, ORIGIN, RedditClient
@@ -30,6 +30,7 @@ def profile_url(handle: str) -> str:
 async def plan_all(session: AsyncSession, *, day: date | None = None) -> int:
     stmt = select(Account.id, Account.handle).where(
         Account.platform == Platform.REDDIT,
+        Account.role == AccountRole.CHANNEL,
         Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
     )
     targets = list((await session.execute(stmt)).all())

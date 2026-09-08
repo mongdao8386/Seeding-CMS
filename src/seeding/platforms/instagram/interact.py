@@ -24,7 +24,7 @@ from seeding.platforms.instagram.client import (
     classify_exc,
     pk_from_code,
 )
-from seeding.platforms.outreach import ensure_proxy_loaded, watch_seconds
+from seeding.platforms.outreach import client_kwargs, direct_ok, ensure_proxy_loaded, watch_seconds
 
 log = structlog.get_logger(__name__)
 
@@ -69,7 +69,7 @@ async def run(
     sleep=asyncio.sleep,
 ) -> InteractResult:
     await ensure_proxy_loaded(session, profile)
-    if profile.proxy is None:
+    if profile.proxy is None and not direct_ok(job):
         return InteractResult(
             False, "profile has no proxy - refusing to touch Instagram from the host IP"
         )
@@ -87,7 +87,7 @@ async def run(
         return InteractResult(False, "repost on instagram is not implemented")
 
     try:
-        async with client_factory(profile) as ig:
+        async with client_factory(profile, **client_kwargs(job)) as ig:
             if job.kind is ActivityKind.FOLLOW:
                 user_id = await ig.user_id(handle)
                 if not user_id:

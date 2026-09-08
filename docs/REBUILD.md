@@ -73,5 +73,6 @@ devices. Thêm lại khi cần, không phải vì đã có.
 | 8 | Bài đã đăng: liệt kê, xoá trên nền tảng (TikTok/IG/X/Reddit), sửa chú thích (IG/Reddit) | Mục Đã đăng trong Nội dung & Lịch |
 | 9 | Reddit (API) và Facebook (trình duyệt) trở lại: đăng, nuôi, giờ vàng đủ 5 nền tảng | Tab Reddit/Facebook dùng được |
 | 10 | Chatbot: tự trả lời bình luận dưới bài và tin nhắn (IG, X; TikTok chỉ bình luận) | Thẻ Chatbot ở Cài đặt, trả lời hiện ở dòng thời gian |
+| 11 | Hai loại tài khoản: xây kênh / tương tác chéo (booster không proxy, chỉ đẩy bài của kênh, trần mỗi bài mỗi ngày) | Lọc theo loại ở Tài khoản; lịch booster tự lập |
 
 Mỗi phần: code + test + một đoạn trong `HUONG-DAN.md`, rồi commit.

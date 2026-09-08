@@ -165,8 +165,10 @@ def classify_exc(exc: BaseException, *, idempotent: bool) -> ActionResult:
 
 
 class XClient:
-    def __init__(self, profile: Profile, *, client_factory=Client) -> None:
-        if profile.proxy is None:
+    def __init__(
+        self, profile: Profile, *, client_factory=Client, allow_direct: bool = False
+    ) -> None:
+        if profile.proxy is None and not allow_direct:
             raise ValueError("profile has no proxy - refusing to touch X from the host IP")
         self.profile = profile
         self._factory = client_factory
@@ -177,7 +179,9 @@ class XClient:
         cookies = cookies_from(self.profile.get_cookies())
         if "auth_token" not in cookies or "ct0" not in cookies:
             raise RuntimeError("X needs both auth_token and ct0 cookies - import the cookie first")
-        c = self._factory(language="vi", proxy=proxy_dsn(self.profile.proxy))
+        c = self._factory(
+            language="vi", proxy=proxy_dsn(self.profile.proxy) if self.profile.proxy else None
+        )
         c.set_cookies(cookies)
         self.client = c
         return self

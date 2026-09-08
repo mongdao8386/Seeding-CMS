@@ -80,6 +80,7 @@ export function qs(params: Record<string, string | number | boolean | undefined 
 
 export type Platform = "tiktok" | "instagram" | "x" | "facebook" | "threads" | "youtube" | "reddit";
 export type AccountStatus = "warming" | "active" | "paused" | "needs_human" | "suspended" | "dead";
+export type AccountRole = "channel" | "booster";
 
 export type Page<T> = { items: T[]; total: number; limit: number; offset: number };
 
@@ -88,6 +89,7 @@ export type AccountRow = {
   platform: Platform;
   handle: string;
   status: AccountStatus;
+  role: AccountRole;
   daily_cap: number;
   warmup_started_at: string | null;
   last_posted_at: string | null;
@@ -126,6 +128,8 @@ export type Proxy = {
 };
 
 export type Stats = {
+  channels: number;
+  boosters: number;
   accounts: number;
   ready: number;
   blocked: number;
@@ -285,6 +289,7 @@ export type Settings = {
   chatbot_last: { at: string; handle: string; replier: string; replied: number; dm_replied: number; stopped: string | null } | null;
   warm_comment_style: string;
   warm_keywords: string[];
+  tiktok_actions: string;
 };
 
 export type Post = {

@@ -224,6 +224,19 @@ class Persona(UUIDPk, Base):
     )
 
 
+class AccountRole(enum.StrEnum):
+    """Hai loai tai khoan.
+
+    CHANNEL  xay kenh: dang bai, nuoi huong ra ngoai, chatbot, doi danh tinh - va DUOC
+             doi booster tuong tac vao.
+    BOOSTER  tuong tac cheo: chi tha tim / follow / binh luan / dang lai vao bai cua tai
+             khoan xay kenh. Khong dang bai, khong nuoi ra ngoai, khong can proxy.
+    """
+
+    CHANNEL = "channel"
+    BOOSTER = "booster"
+
+
 class Account(UUIDPk, Base):
     __tablename__ = "accounts"
     __table_args__ = (UniqueConstraint("platform", "handle", name="uq_account_platform_handle"),)
@@ -241,6 +254,9 @@ class Account(UUIDPk, Base):
     secrets_enc: Mapped[str | None] = mapped_column(Text, default=None)
 
     daily_cap: Mapped[int] = mapped_column(Integer, default=3)
+    role: Mapped[AccountRole] = mapped_column(
+        Enum(AccountRole, native_enum=False), default=AccountRole.CHANNEL, index=True
+    )
     warmup_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
