@@ -210,26 +210,30 @@ async def plan_for_account(
 
 async def plan_all(session: AsyncSession, *, day: date | None = None) -> int:
     """Moi tai khoan TikTok dang nuoi hoac dang hoat dong, co profile san sang."""
-    stmt = select(Account).where(
+    stmt = select(Account.id, Account.handle).where(
         Account.platform == Platform.TIKTOK,
         Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
     )
+    # Lay id + handle thanh tuple TRUOC vong lap. Sau mot `rollback()` moi object ORM
+    # trong phien deu bi expire, va cham vao `account.handle` de ghi log la mot lan
+    # lazy-load - trong phien async do la MissingGreenlet. Da hong that o dung cho do.
+    targets = list((await session.execute(stmt)).all())
     total = 0
-    for account in list((await session.execute(stmt)).scalars().all()):
-        profile = await profiles_mod.get_for_account(session, account.id)
-        if not readiness.check(account, profile).ready:
-            continue
-        # TikTokWeb doc profile.proxy; get_for_account khong nap san, va lazy-load trong
-        # phien async la MissingGreenlet. Nap tuong minh.
-        if profile.proxy_id is not None and "proxy" not in profile.__dict__:
-            profile.proxy = await session.get(Proxy, profile.proxy_id)
+    for account_id, handle in targets:
         try:
+            account = await session.get(Account, account_id)
+            profile = await profiles_mod.get_for_account(session, account_id)
+            if account is None or not readiness.check(account, profile).ready:
+                continue
+            # TikTokWeb doc profile.proxy; get_for_account khong nap san. Nap tuong minh.
+            if profile.proxy_id is not None and "proxy" not in profile.__dict__:
+                profile.proxy = await session.get(Proxy, profile.proxy_id)
             total += len(await plan_for_account(session, account, profile, day=day))
         except Exception as exc:
             # Mot tai khoan doc feed hong (proxy treo, signer chet) khong duoc chan ca doi.
             await session.rollback()
             log.warning(
-                "outreach.plan_failed", handle=account.handle, error=f"{type(exc).__name__}: {exc}"
+                "outreach.plan_failed", handle=handle, error=f"{type(exc).__name__}: {exc}"
             )
     return total
 
