@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, type OpenedProfile, type Takeover } from "@/lib/api";
+import { CredentialsInline } from "@/components/credentials";
 import { Empty, PLATFORM_LABEL, timeAgo } from "@/components/ui";
 
 const RELOGIN_HINT =
@@ -65,6 +66,7 @@ function TakeoverRow({ t, onChange, onError }: { t: Takeover; onChange: () => vo
       </div>
       <div className="text-sm text-warn-text">{t.reason}</div>
       {hintFor(t.reason) && <div className="text-xs text-muted">{hintFor(t.reason)}</div>}
+      <CredentialsInline accountId={t.account_id} />
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="btn text-xs"

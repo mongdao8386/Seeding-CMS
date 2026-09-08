@@ -80,6 +80,20 @@ class AccountPatch(BaseModel):
     role: AccountRole | None = None
 
 
+class SecretsOut(BaseModel):
+    """Thong tin dang nhap cua acc, giai ma tu ket. Chi tra ve cho nguoi da co API token."""
+
+    fields: dict[str, str]
+    totp_code: str | None = None
+    known: list[str]
+
+
+class SecretsIn(BaseModel):
+    """Sua thong tin dang nhap: khoa nao co gia tri thi ghi de, rong thi xoa khoa do."""
+
+    fields: dict[str, str | None]
+
+
 class ImportResult(BaseModel):
     created: int
     handles: list[str]

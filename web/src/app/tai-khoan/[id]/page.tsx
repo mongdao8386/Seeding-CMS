@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { api, type AccountDetail, type OpenedProfile, type TimelineItem } from "@/lib/api";
+import { CredentialsCard } from "@/components/credentials";
 import { IdentityCard } from "@/components/identity";
 import { Avatar, Empty, ErrorNote, PLATFORM_LABEL, StatusPill, useLoad } from "@/components/ui";
 
@@ -141,6 +142,10 @@ export default function AccountPage() {
               </dl>
               <p className="text-xs text-faint">Fingerprint không sửa được — nó là danh tính, không phải cài đặt.</p>
             </section>
+
+            <div className="lg:col-start-2">
+              <CredentialsCard accountId={a.id} />
+            </div>
 
             <div className="lg:col-start-2">
               <IdentityCard

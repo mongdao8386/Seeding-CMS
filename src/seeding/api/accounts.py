@@ -19,8 +19,10 @@ from seeding.api.schemas import (
     DeleteOut,
     ImportResult,
     Page,
+    SecretsIn,
+    SecretsOut,
 )
-from seeding.domain import readiness
+from seeding.domain import readiness, vault
 from seeding.domain.defaults import ensure_defaults
 from seeding.domain.models import (
     Account,
@@ -314,3 +316,52 @@ async def delete_account(
     await s.delete(account)
     await s.commit()
     return DeleteOut(deleted=True, detail=f"Đã xoá {handle}")
+
+
+# ------------------------------------------------------------ thong tin dang nhap
+
+
+def _secrets_out(account: Account) -> SecretsOut:
+    data = account.get_secrets() or {}
+    fields = {k: str(data[k]) for k in bulk.SECRET_FIELDS if data.get(k)}
+    code = None
+    if fields.get("totp_seed"):
+        try:
+            code = vault.totp_now(fields["totp_seed"])
+        except Exception:
+            code = None
+    return SecretsOut(fields=fields, totp_code=code, known=list(bulk.SECRET_FIELDS))
+
+
+@router.get("/{account_id}/secrets", response_model=SecretsOut)
+async def get_account_secrets(
+    account_id: uuid.UUID, s: AsyncSession = Depends(get_session)
+) -> SecretsOut:
+    """Ten dang nhap, mat khau, email khoi phuc, 2FA - nhung gi da dan vao luc nhap acc.
+    De luc phai dang nhap lai khong phai di mo lai file nguoi ban."""
+    account = await s.get(Account, account_id)
+    if account is None:
+        raise HTTPException(404, "Không có tài khoản này")
+    return _secrets_out(account)
+
+
+@router.put("/{account_id}/secrets", response_model=SecretsOut)
+async def put_account_secrets(
+    account_id: uuid.UUID, body: SecretsIn, s: AsyncSession = Depends(get_session)
+) -> SecretsOut:
+    account = await s.get(Account, account_id)
+    if account is None:
+        raise HTTPException(404, "Không có tài khoản này")
+    unknown = sorted(k for k in body.fields if k not in bulk.SECRET_FIELDS)
+    if unknown:
+        raise HTTPException(422, f"Không có trường {', '.join(unknown)}")
+    data = account.get_secrets() or {}
+    for key, value in body.fields.items():
+        value = (value or "").strip()
+        if value:
+            data[key] = value
+        else:
+            data.pop(key, None)
+    account.set_secrets(data)
+    await s.commit()
+    return _secrets_out(account)

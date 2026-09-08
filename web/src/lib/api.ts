@@ -112,6 +112,12 @@ export type AccountDetail = AccountRow & {
   profile_id: string | null;
 };
 
+export type AccountSecrets = {
+  fields: Record<string, string>;
+  totp_code: string | null;
+  known: string[];
+};
+
 export type Proxy = {
   id: string;
   label: string;
