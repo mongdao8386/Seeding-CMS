@@ -106,11 +106,13 @@ bại hai lần trước đó), worker giữ mỗi job tới 15 phút. `TIKTOK_A
 lại đường HTTP nếu TikTok mở cổng.
 
 **Proxy phải tải được web TikTok.** Đo 08/09/2026: proxy HA1 không bao giờ hiện trang video
-(53 file JS trên `ttwstatic.com` bị huỷ, trang trống 5 phút, cả khi mở cửa sổ); P01, P02
-không hiện thanh hành động trong 4 phút; P03 hiện sau 109–222 giây; P04 sau 151 giây.
-Đo lại bằng `python scripts/check_proxy_tiktok.py P03 P04` mỗi khi thêm proxy mới. Acc
-trên proxy nào không tải nổi trang thì job thả tim báo "page never rendered" và thử
-lại — đổi proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
+(53 file JS trên `ttwstatic.com` bị huỷ, trang trống 5 phút, cả khi mở cửa sổ). Hai lượt
+đo cùng ngày, cửa sổ 4 phút: P02 không lần nào; P01 và P04 một lần được (131 s / 151 s)
+một lần không; P03 109–222 s; P05 175 s; P06 216 s. Nghĩa là proxy dân cư này "lúc được
+lúc không" quanh mốc 2–4 phút, nên cửa sổ chờ 8 phút là bắt buộc. Đo lại bằng
+`python scripts/check_proxy_tiktok.py P03 P04` mỗi khi thêm proxy mới. Acc trên proxy
+nào không tải nổi trang thì job thả tim báo "page never rendered" và thử lại — đổi
+proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
 thẳng) đã thử: TikTok trả trang "Không thể mở trang", nên để trống.
 
 **Đăng lại (repost)**: 0–1 lần/ngày, chỉ từ ngày thứ 2 của warm-up, chỉ video đã thả
