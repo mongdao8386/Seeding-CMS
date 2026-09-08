@@ -269,6 +269,7 @@ export type Settings = {
   alert_configured: boolean;
   tiktok_post_via_http: boolean;
   tiktok_interact_via_http: boolean;
+  instagram_enabled: boolean;
 };
 
 export type KindCount = { planned: number; done: number; failed: number };

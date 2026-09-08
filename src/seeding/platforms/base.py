@@ -1,16 +1,19 @@
-"""Giao dien chung cho moi nen tang.
+"""Giao dien chung cho moi nen tang, va so dang ky.
 
-Giai doan 01 chi co RedditAdapter (goi API that). Giai doan 03 se them
-BrowserAdapter dung Camoufox - no cai dat dung giao dien nay, nen planner,
-scheduler va rate governor khong phai biet su khac nhau.
+Worker khong biet TikTok hay Instagram khac nhau the nao. No hoi so dang ky: nen tang
+nay dang bai bang gi, nuoi bang gi, kiem phien bang gi. Moi nen tang tu dang ky khi
+duoc import (load_all), va chi dang ky khi cong tac trong .env dang bat.
 """
 
 from __future__ import annotations
 
+import importlib
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from seeding.domain.models import Account, Platform, Profile, Variant
+from seeding.browser.checkpoints import Checkpoint
+from seeding.domain.models import Account, Platform, Profile, Proxy, Variant
 
 
 @dataclass(slots=True)
@@ -20,11 +23,24 @@ class PublishResult:
     remote_url: str | None = None
     error: str | None = None
     # True khi gap checkpoint / captcha / xac minh -> day sang hang doi can thiep tay
-    # thay vi retry. Giai doan 03 moi dung toi, khai bao san de khong phai doi giao dien.
+    # thay vi retry.
     needs_human: bool = False
     # True khi loi mang tam thoi hoac bi rate limit -> retry co ich.
     retryable: bool = False
     metrics: dict = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class InteractResult:
+    """Ket qua mot hanh dong nuoi (tha tim / follow / binh luan).
+
+    `checkpoint` khac None = can nguoi; `checkpoint.is_terminal` = tai khoan xong roi.
+    """
+
+    ok: bool
+    detail: str
+    checkpoint: Checkpoint | None = None
+    retryable: bool = False
 
 
 @runtime_checkable
@@ -39,11 +55,21 @@ class Adapter(Protocol):
         *,
         profile: Profile | None = None,
     ) -> PublishResult:
-        """Adapter API bo qua `profile`; adapter trinh duyet thi bat buoc phai co."""
+        """Adapter API bo qua `profile`; adapter trinh duyet / cookie thi bat buoc phai co."""
         ...
 
 
+# (session, profile, job) -> InteractResult
+InteractRunner = Callable[..., Awaitable[InteractResult]]
+# (session, *, day=None) -> so job da lap
+WarmPlanner = Callable[..., Awaitable[int]]
+# (profile) -> (con song, mo ta)
+HealthCheck = Callable[[Profile], Awaitable[tuple[bool, str]]]
+
 _REGISTRY: dict[Platform, Adapter] = {}
+_INTERACT: dict[Platform, InteractRunner] = {}
+_WARM: dict[Platform, WarmPlanner] = {}
+_HEALTH: dict[Platform, HealthCheck] = {}
 
 
 def register(adapter: Adapter) -> None:
@@ -54,3 +80,50 @@ def get(platform: Platform) -> Adapter:
     if platform not in _REGISTRY:
         raise NotImplementedError(f"Chua co adapter cho {platform.value}")
     return _REGISTRY[platform]
+
+
+def register_interact(platform: Platform, runner: InteractRunner) -> None:
+    _INTERACT[platform] = runner
+
+
+def get_interact(platform: Platform) -> InteractRunner | None:
+    return _INTERACT.get(platform)
+
+
+def register_warm(platform: Platform, planner: WarmPlanner) -> None:
+    _WARM[platform] = planner
+
+
+def warm_planners() -> dict[Platform, WarmPlanner]:
+    return dict(_WARM)
+
+
+def register_health(platform: Platform, check: HealthCheck) -> None:
+    _HEALTH[platform] = check
+
+
+def get_health(platform: Platform) -> HealthCheck | None:
+    return _HEALTH.get(platform)
+
+
+# Cac module tu dang ky khi duoc import. Thu tu khong quan trong.
+_MODULES = (
+    "seeding.platforms.tiktok.publish",
+    "seeding.platforms.tiktok.interact",
+    "seeding.platforms.tiktok.warm",
+    "seeding.platforms.instagram.publish",
+    "seeding.platforms.instagram.interact",
+    "seeding.platforms.instagram.warm",
+)
+
+
+def load_all() -> None:
+    """Import moi nen tang de chung dang ky. Goi mot lan khi worker khoi dong."""
+    for name in _MODULES:
+        importlib.import_module(name)
+
+
+def proxy_dsn(proxy: Proxy) -> str:
+    """scheme://user:pass@host:port - dang ma httpx va aiograpi cung hieu."""
+    auth = f"{proxy.username}:{proxy.get_password() or ''}@" if proxy.username else ""
+    return f"{(proxy.scheme or 'http').lower()}://{auth}{proxy.host}:{proxy.port}"

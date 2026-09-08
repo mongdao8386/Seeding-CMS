@@ -348,3 +348,4 @@ class SettingsOut(BaseModel):
     alert_configured: bool
     tiktok_post_via_http: bool
     tiktok_interact_via_http: bool
+    instagram_enabled: bool

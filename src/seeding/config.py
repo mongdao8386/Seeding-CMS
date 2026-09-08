@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # Tha tim / theo doi / binh luan tren TikTok bang HTTP (core/tiktok_interact) thay vi
     # trinh duyet, va lap lich nuoi huong ra ngoai tren For You (core/outreach).
     tiktok_interact_via_http: bool = True
+    # Instagram qua aiograpi (API rieng cua app, cookie sessionid, khong trinh duyet):
+    # dang bai, nuoi va kiem phien. Tat thi tai khoan Instagram chi con mo tay.
+    instagram_enabled: bool = True
 
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic

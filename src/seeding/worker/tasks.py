@@ -25,12 +25,14 @@ from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
 from seeding.domain.models import AccountStatus, Attempt, JobStatus, PostJob
 from seeding.platforms import base as adapters
-from seeding.platforms.tiktok import publish as _tiktok  # noqa: F401 - import de dang ky adapter
 from seeding.scheduling import governor
 from seeding.scheduling import slots as slots_mod
 from seeding.scheduling.planner import due_jobs
 
 log = structlog.get_logger(__name__)
+
+# Moi nen tang tu dang ky adapter / runner / planner / health khi duoc import.
+adapters.load_all()
 
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(minutes=5), timedelta(minutes=30), timedelta(hours=2)]
@@ -235,12 +237,18 @@ async def prune_media(ctx: dict) -> int:
 async def plan_activity(ctx: dict) -> int:
     """Lap lich nuoi huong ra ngoai cho hom nay. Chay moi sang va luc khoi dong; ngay da
     co lich thi khong lam lai (warm.plan_for_account tu kiem)."""
-    from seeding.platforms.tiktok import warm
-
-    if not get_settings().tiktok_interact_via_http:
-        return 0
+    created = 0
     async with SessionLocal() as session:
-        created = await warm.plan_all(session)
+        for platform, planner in adapters.warm_planners().items():
+            try:
+                created += await planner(session)
+            except Exception as exc:
+                await session.rollback()
+                log.warning(
+                    "plan_activity.failed",
+                    platform=platform.value,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
     if created:
         log.info("plan_activity.done", outward=created)
     return created
@@ -286,8 +294,7 @@ ACTIVITY_MAX_ATTEMPTS = 3
 
 
 async def run_activity_job(ctx: dict, job_id: str) -> str:
-    from seeding.domain.models import ActivityJob, Platform
-    from seeding.platforms.tiktok import interact
+    from seeding.domain.models import ActivityJob
 
     async with SessionLocal() as session:
         job = (
@@ -306,12 +313,13 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             log.warning("activity.not_ready", handle=job.account.handle, reason=verdict.reason)
             return job.status.value
 
-        if job.account.platform is Platform.TIKTOK and get_settings().tiktok_interact_via_http:
-            result = await interact.run(session, profile, job)
-        else:
-            result = interact.InteractResult(
-                False, f"nuôi {job.account.platform.value} qua HTTP vào ở phần 5-6"
+        runner = adapters.get_interact(job.account.platform)
+        if runner is None:
+            result = adapters.InteractResult(
+                False, f"chưa có đường nuôi cho {job.account.platform.value} (hoặc đang tắt)"
             )
+        else:
+            result = await runner(session, profile, job)
 
         job.detail = result.detail
         if result.ok:
@@ -368,7 +376,12 @@ async def health_sweep(ctx: dict) -> int:
                 continue
             if profile.proxy_id is not None and "proxy" not in profile.__dict__:
                 profile.proxy = await session.get(Proxy, profile.proxy_id)
-            ok, detail = await check_session(profile, account.platform)
+            # Nen tang co duong kiem nhe (HTTP qua proxy) thi dung; khong thi mo trinh duyet.
+            checker = adapters.get_health(account.platform)
+            if checker is not None:
+                ok, detail = await checker(profile)
+            else:
+                ok, detail = await check_session(profile, account.platform)
             needs_human = await profiles_mod.mark_health(
                 session, profile, ok, detail=detail, threshold=settings.health_fail_threshold
             )

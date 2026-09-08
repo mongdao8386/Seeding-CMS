@@ -15,56 +15,24 @@ from __future__ import annotations
 
 import random
 import re
-from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.browser.checkpoints import Checkpoint, CheckpointKind
-from seeding.domain.models import Account, ActivityJob, ActivityKind, Profile, Proxy
+from seeding.config import get_settings
+from seeding.content.comments import COMMENTS, comment_text
+from seeding.domain.models import Account, ActivityJob, ActivityKind, Platform, Profile
+from seeding.platforms.base import InteractResult, register_interact
+from seeding.platforms.outreach import ensure_proxy_loaded
 from seeding.platforms.tiktok.web import ActionResult, TikTokWeb
 
 log = structlog.get_logger(__name__)
 
 
-@dataclass(slots=True)
-class InteractResult:
-    """Ket qua mot hanh dong nham dich. `checkpoint` khac None = can nguoi."""
-
-    ok: bool
-    detail: str
-    checkpoint: Checkpoint | None = None
-    retryable: bool = False
-
-
 _VIDEO = re.compile(r"^/@([^/]+)/video/(\d+)")
 _PROFILE = re.compile(r"^/@([^/]+)/?$")
-
-# Binh luan ngan, chung chung, tieng Viet doi thuong. Chon theo rng seed tu job id nen
-# chay lai cung mot job ra cung mot cau - va hai tai khoan khac nhau ra cau khac nhau.
-COMMENTS = [
-    "Hay quá 😂",
-    "xem đi xem lại mấy lần luôn",
-    "ủa hay v",
-    "đỉnh thật sự",
-    "cười xỉu 🤣",
-    "coi mà thấy vui ghê",
-    "trend này hot quá",
-    "ai cũng nên xem cái này",
-    "hay ghê á",
-    "quá đỉnh luôn 👏",
-    "lưu lại coi sau",
-    "nhạc gì v ạ",
-    "xem lần thứ 3 rồi 😅",
-    "chất lượng thật sự",
-    "vui quá trời",
-    "ok cái này hay nè",
-    "thật sự là đỉnh",
-    "đúng gu mình luôn",
-    "quá là hay",
-    "coi mà mê",
-]
 
 
 def parse_target(url: str | None) -> tuple[str | None, str | None]:
@@ -79,11 +47,6 @@ def parse_target(url: str | None) -> tuple[str | None, str | None]:
     return None, None
 
 
-def comment_text(job_id, rng: random.Random | None = None) -> str:
-    rng = rng or random.Random(f"comment:{job_id}")
-    return rng.choice(COMMENTS)
-
-
 def _to_result(res: ActionResult) -> InteractResult:
     if res.ok:
         return InteractResult(True, res.detail)
@@ -95,12 +58,6 @@ def _to_result(res: ActionResult) -> InteractResult:
     return InteractResult(False, res.detail, retryable=res.retryable)
 
 
-async def _ensure_proxy_loaded(session: AsyncSession, profile: Profile) -> None:
-    """profile.proxy co the chua duoc nap trong phien async - nap tuong minh, khong lazy."""
-    if profile.proxy_id is not None and "proxy" not in profile.__dict__:
-        profile.proxy = await session.get(Proxy, profile.proxy_id)
-
-
 async def run(
     session: AsyncSession,
     profile: Profile,
@@ -109,7 +66,7 @@ async def run(
     web_factory=TikTokWeb,
     rng: random.Random | None = None,
 ) -> InteractResult:
-    await _ensure_proxy_loaded(session, profile)
+    await ensure_proxy_loaded(session, profile)
     if profile.proxy is None:
         return InteractResult(
             False, "profile has no proxy - refusing to touch TikTok from the host IP"
@@ -155,3 +112,10 @@ async def run(
         detail=result.detail,
     )
     return result
+
+
+if get_settings().tiktok_interact_via_http:
+    register_interact(Platform.TIKTOK, run)
+
+
+__all__ = ["COMMENTS", "InteractResult", "comment_text", "parse_target", "run"]

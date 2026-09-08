@@ -96,12 +96,34 @@ Cảnh báo ra ngoài: đặt `ALERT_WEBHOOK_URL` (Telegram, Discord, Slack hay 
 và `ALERT_KIND` trong `.env`. Mỗi yêu cầu chờ người báo **một lần**, không báo lại mỗi
 vòng quét. Bấm **Gửi thử** ở Cài đặt để chắc là tin đến.
 
+## 3d. Instagram (phần 5)
+
+Không mở trình duyệt. Instagram đi bằng **API riêng của app** (thư viện aiograpi) với
+cookie `sessionid` của tài khoản, qua proxy của profile. Dán tài khoản Instagram y như
+TikTok: cột `platform` = `instagram`, cột cookie có `sessionid`.
+
+- **Đăng bài**: ảnh lên thành bài thường, video (`.mp4`, `.mov`) lên thành **Reel**.
+  Tiêu đề + thân bài thành caption. Không đăng được bài chỉ có chữ.
+- **Nuôi**: cùng nhịp với TikTok (thả tim 4–8, follow 1–3, bình luận 0–2 mỗi ngày), dích
+  lấy từ Reels mà Instagram đề xuất cho chính tài khoản đó. Giờ vàng chỉnh ở tab
+  Instagram trong Cài đặt.
+- **Kiểm phiên**: một request nhẹ qua proxy, không mở trình duyệt.
+- **Thiết bị**: lần đầu chạy, mỗi profile được sinh một bộ thiết bị (uuid, model, UA,
+  vi_VN, múi giờ VN) và giữ cố định về sau — đổi thiết bị mỗi lần gọi là dấu vết rõ nhất.
+
+Instagram từ chối thế nào thì xử lý thế ấy: checkpoint / challenge / phiên chết → **Cần
+bạn**; "please wait a few minutes" hoặc action blocked → nghỉ rồi thử lại; tài khoản bị
+khoá hẳn → *chết*. Đăng bài không rõ kết quả (mạng đứt giữa chừng) → **Cần bạn**, không
+tự đăng lại — có thể bài đã lên.
+
+Tắt bằng `INSTAGRAM_ENABLED=false`.
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua
-proxy của acc, ký bằng signer ở `tools/tiktok-signer`. Không mở trình duyệt. Bước đăng
-cuối không bao giờ tự thử lại — không rõ kết quả thì bài vào trạng thái **cần bạn**, vì
-thử lại có thể đăng hai lần.
+proxy của acc, ký bằng signer ở `tools/tiktok-signer`. Instagram đăng qua API của app
+(aiograpi). Cả hai không mở trình duyệt. Bước đăng cuối không bao giờ tự thử lại — không
+rõ kết quả thì bài vào trạng thái **cần bạn**, vì thử lại có thể đăng hai lần.
 
 ## 5. Khi có sự cố
 

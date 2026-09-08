@@ -67,7 +67,7 @@ devices. Thêm lại khi cần, không phải vì đã có.
 | 2 | Đăng TikTok: HTTP publish, khung giờ vàng, governor, quiet period | Màn hình Nội dung & Lịch, bài lên thật |
 | 3 | Nuôi TikTok: For You, thả tim/follow/bình luận người lạ | Dòng thời gian trong Chi tiết tài khoản |
 | 4 | Vận hành: hàng đợi chờ người, health, cảnh báo Telegram | Màn hình Tổng quan |
-| 5 | Instagram qua aiograpi | Đăng + nuôi IG |
+| 5 | Instagram qua aiograpi: đăng ảnh/Reel, nuôi từ Reels đề xuất, kiểm phiên HTTP | Tab Instagram dùng được y như TikTok |
 | 6 | X qua twifork, health check theo GraphQL id | Đăng + nuôi X |
 | 7 | Đổi username/tên/avatar theo lịch; chatbot (định nghĩa sau) | |
 

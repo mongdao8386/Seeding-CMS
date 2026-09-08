@@ -20,6 +20,8 @@ dependencies = [
     "python-multipart>=0.0.20",
     "httpx>=0.28",
     "structlog>=24.4",
+    # Instagram qua API rieng cua app (async fork cua instagrapi).
+    "aiograpi>=1.12",
 
     # Kho mat: cookie jar va ma 2FA.
     "cryptography>=44",

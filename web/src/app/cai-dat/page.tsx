@@ -64,7 +64,7 @@ export default function SettingsPage() {
           ) : (
             <p className="text-muted">…</p>
           )}
-          <p className="text-xs text-faint">Thả tim 4–8, follow 1–3, bình luận 0–2 mỗi ngày; ngày đầu một nửa. Sửa trong platforms/tiktok/warm.py.</p>
+          <p className="text-xs text-faint">Thả tim 4–8, follow 1–3, bình luận 0–2 mỗi ngày; ngày đầu một nửa. Chung cho TikTok và Instagram — sửa trong platforms/outreach.py.</p>
         </section>
 
         <section className="card flex flex-col gap-3 p-5">
@@ -74,6 +74,7 @@ export default function SettingsPage() {
           <Row ok={!!sys.data?.signer} text={`Signer TikTok · ${sys.data?.signer_detail ?? "…"}`} />
           <Row ok={!!settings.data?.tiktok_post_via_http} text={settings.data?.tiktok_post_via_http ? "Đăng TikTok qua HTTP" : "Đăng TikTok qua HTTP: tắt"} />
           <Row ok={!!settings.data?.tiktok_interact_via_http} text={settings.data?.tiktok_interact_via_http ? "Nuôi TikTok qua HTTP" : "Nuôi TikTok qua HTTP: tắt"} />
+          <Row ok={!!settings.data?.instagram_enabled} text={settings.data?.instagram_enabled ? "Instagram qua API app (aiograpi)" : "Instagram: tắt"} />
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Row ok={!!settings.data?.alert_configured} text={settings.data?.alert_configured ? `Cảnh báo ${settings.data.alert_kind} khi cần bạn` : "Cảnh báo chưa bật — đặt ALERT_WEBHOOK_URL trong .env"} />
             {settings.data?.alert_configured && (
