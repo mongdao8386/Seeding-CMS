@@ -103,3 +103,11 @@ async def test_tiktok_login_button_means_the_session_is_dead():
 async def test_login_button_selector_is_per_platform():
     page = FakePage(url="https://x.com/home", selectors=("#header-login-button",))
     assert await detect(page, Platform.X) is None
+
+
+async def test_tiktok_captcha_overlay_is_a_captcha_checkpoint():
+    page = FakePage(
+        url="https://www.tiktok.com/@a/video/1", selectors=("#captcha-verify-container-main-page",)
+    )
+    found = await detect(page, Platform.TIKTOK)
+    assert found and found.kind is CheckpointKind.CAPTCHA

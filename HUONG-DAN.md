@@ -100,10 +100,27 @@ rỗng cho mọi biến thể HTTP — kể cả với CSRF token thật và msT
 chọn đích và lập lịch vẫn HTTP, còn bấm thì mở đúng trang video trong Camoufox với
 profile + proxy của acc: trang tự phát video, TikTok thật sự thấy 30–45 giây xem, rồi
 mới bấm. Chậm (mỗi trang 1,5–8 phút qua proxy dân cư) nhưng là đường duy nhất đã lên
-được: **lần thả tim thật đầu tiên lên được 08/09/2026 16:55** trên acc P03 — xem 36 giây,
-bấm, TikTok xác nhận đã thích, tổng 211 giây. Cửa sổ chờ trang là 8 phút (5 phút thất
-bại hai lần trước đó), worker giữ mỗi job tới 15 phút. `TIKTOK_ACTIONS=http` để quay
-lại đường HTTP nếu TikTok mở cổng.
+được. Cửa sổ chờ trang là 8 phút (5 phút thất bại hai lần), worker giữ mỗi job tới 15
+phút, mỗi acc chỉ mở một trình duyệt một lúc. `TIKTOK_ACTIONS=http` để quay lại đường
+HTTP nếu TikTok mở cổng.
+
+**"Đã thích" trên giao diện không phải bằng chứng.** Đo 08/09/2026: acc P03 có phiên đã
+chết (TikTok trả `session_expired`) mà trang video vẫn hiện nút tim, bấm vẫn chuyển sang
+"đã thích" — TikTok chỉ không lưu. Vì thế hệ thống hỏi TikTok trước mỗi hành động
+(`passport/web/account/info`, 2 giây, qua proxy của acc): phiên chết thì job vào hàng
+chờ người với lý do "logged_out", không tốn 8 phút trình duyệt. Quét sức khoẻ TikTok
+cũng dùng đường này thay vì mở trình duyệt; kết quả hiện ở dòng thời gian của acc,
+mục "Kiểm phiên".
+
+**Cookie nhập từ máy khác thì TikTok không tin cú bấm.** Cùng ngày, trên acc P05 (phiên
+sống, cookie nhập từ file): mở trang chủ thấy đang đăng nhập, xem video 42 giây, bấm
+tim → TikTok đè **hộp captcha** lên nút. Acc HA1 bấm tim "thành công" lúc 17:27 thì
+5 phút sau phiên chết. Nghĩa là phiên sinh ra ở thiết bị khác, còn cú bấm đến từ
+fingerprint của profile Camoufox — TikTok đòi xác minh hoặc đăng xuất. Cách xử lý đúng
+là qua **hàng chờ người**: job gặp captcha tự mở yêu cầu tiếp quản, người vận hành mở
+trình duyệt của profile, giải captcha (hoặc đăng nhập lại ngay trong profile đó), từ
+đó thiết bị được TikTok tin và các lần bấm sau mới có giá trị. Đọc lại phiên đã chết
+qua HTTP là cách rẻ nhất để biết acc nào cần đăng nhập lại.
 
 **Proxy phải tải được web TikTok.** Đo 08/09/2026: proxy HA1 không bao giờ hiện trang video
 (53 file JS trên `ttwstatic.com` bị huỷ, trang trống 5 phút, cả khi mở cửa sổ). Hai lượt

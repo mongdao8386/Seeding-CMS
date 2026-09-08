@@ -74,6 +74,12 @@ _LOGGED_OUT_SELECTORS: dict[Platform, tuple[str, ...]] = {
 
 # Khung captcha nhung dich vu pho bien.
 _CAPTCHA_SELECTORS = (
+    # TikTok: hop xac minh hien DE LEN trang video dung luc bam tim (P05, 08/09/2026) -
+    # trang van hien binh thuong, chi cu bam bi chan.
+    "#captcha-verify-container-main-page",
+    "[id^='captcha-verify-container']",
+    "#captcha_container",
+    "iframe[src*='captcha']",
     "iframe[src*='recaptcha']",
     "iframe[src*='hcaptcha']",
     "iframe[title*='challenge']",

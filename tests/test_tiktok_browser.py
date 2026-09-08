@@ -34,7 +34,9 @@ class _Locator:
         self.selector = selector
         self.typed = ""
 
-    async def click(self):
+    async def click(self, **kw):
+        if self.page.click_raises is not None:
+            raise self.page.click_raises
         self.page.log.append(f"click:{self.selector}")
         self.page.after_click(self.selector)
 
@@ -53,6 +55,7 @@ class _Locator:
 
 class _Page:
     def __init__(self, visible: set[str]):
+        self.click_raises = None
         self.visible = set(visible)
         self.log: list[str] = []
         self.url = VIDEO
@@ -251,3 +254,25 @@ async def test_dead_session_goes_to_a_human_without_opening_a_browser(monkeypatc
     assert not res.ok and res.checkpoint is not None
     assert res.checkpoint.kind.value == "logged_out"
     assert not page.log, "browser must not have been opened"
+
+
+async def test_captcha_overlay_blocking_the_click_goes_to_a_human(monkeypatch):
+    """P05 08/09/2026: nut tim hien, on dinh, nhung hop captcha cua TikTok de len va chan
+    cu bam. Playwright bao TimeoutError; do phai thanh checkpoint captcha, khong thu lai."""
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    from seeding.browser.checkpoints import Checkpoint, CheckpointKind
+
+    async def captcha(page, platform=None):
+        return Checkpoint(CheckpointKind.CAPTCHA, "found #captcha-verify-container-main-page")
+
+    monkeypatch.setattr(tb, "detect", captcha)
+    r = tb.Recipe()
+    page = _Page(visible={r.like[0]})
+    page.click_raises = PlaywrightTimeoutError("Locator.click: Timeout 10000ms exceeded.")
+    res = await tb.run(
+        _NoSession(), _profile(), _job(ActivityKind.ENGAGE, VIDEO), open=_Open(page), sleep=_sleep
+    )
+    assert not res.ok and res.checkpoint is not None
+    assert res.checkpoint.kind is CheckpointKind.CAPTCHA
+    assert not res.retryable

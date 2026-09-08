@@ -19,6 +19,7 @@ import random
 from dataclasses import dataclass
 
 import structlog
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.browser import actions, humanize
@@ -43,6 +44,9 @@ GOTO_TIMEOUT_MS = 480_000
 # proxy dan cu cham, 1-3 giay la khong du (17:23 08/09/2026: bam xong, nhin mot lan, chua
 # thay "da thich", job bao 'MAY have worked'). Cho toi 20 giay, thay ngay thi tra ngay.
 CONFIRM_MS = 20_000
+# Mot cu bam: nut da hien va on dinh, chi con lop phu (captcha) co the chan. 30s mac dinh
+# cua Playwright chi keo dai viec nhan ra dieu do.
+CLICK_MS = 10_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,24 +163,39 @@ async def run(
             # XEM. Trang video tu phat; day la 30-45 giay TikTok that su thay.
             await sleep(watch_seconds(job))
 
-            if job.kind is ActivityKind.ENGAGE:
-                result = await _like(page, recipe, rng, sleep)
-            elif job.kind is ActivityKind.FOLLOW:
-                result = await _follow(page, recipe, rng, sleep)
-            elif job.kind is ActivityKind.COMMENT:
-                result = await _comment(
-                    page, recipe, warm_comment(job.id, "tiktok", rng), rng, sleep
-                )
-            else:
-                result = await _repost(page, recipe, rng, sleep)
+            try:
+                if job.kind is ActivityKind.ENGAGE:
+                    result = await _like(page, recipe, rng, sleep)
+                elif job.kind is ActivityKind.FOLLOW:
+                    result = await _follow(page, recipe, rng, sleep)
+                elif job.kind is ActivityKind.COMMENT:
+                    result = await _comment(
+                        page, recipe, warm_comment(job.id, "tiktok", rng), rng, sleep
+                    )
+                else:
+                    result = await _repost(page, recipe, rng, sleep)
+            except PlaywrightError as exc:
+                # Bam khong toi: 08/09/2026 tren P05, hop captcha cua TikTok hien DE LEN
+                # nut tim dung luc bam ("subtree intercepts pointer events"). Do la
+                # checkpoint cho nguoi, khong phai loi tam de thu lai.
+                if blocked := await detect(page, Platform.TIKTOK):
+                    return InteractResult(False, blocked.evidence, checkpoint=blocked)
+                return InteractResult(False, f"click blocked: {_short(exc)}", retryable=True)
 
             if not result.ok and result.checkpoint is None:
                 if blocked := await detect(page, Platform.TIKTOK):
                     return InteractResult(False, blocked.evidence, checkpoint=blocked)
             return result
     except Exception as exc:
-        log.warning("tiktok_browser.failed", job=str(job.id), error=f"{type(exc).__name__}: {exc}")
-        return InteractResult(False, f"{type(exc).__name__}: {exc}", retryable=True)
+        log.warning("tiktok_browser.failed", job=str(job.id), error=_short(exc))
+        return InteractResult(False, _short(exc), retryable=True)
+
+
+def _short(exc: BaseException) -> str:
+    """Mot dong, ASCII: loi Playwright dai hang chuc dong va co ky tu trang khong ma hoa
+    duoc tren console cp1252 - da lam sap chinh handler ghi log (08/09/2026)."""
+    text = " ".join(str(exc).split())[:300]
+    return f"{type(exc).__name__}: {text}".encode("ascii", "backslashreplace").decode()
 
 
 async def _wait_with_nudge(page, selectors, timeout_ms: int, rng, sleep):
@@ -206,7 +225,7 @@ async def _like(page, r: Recipe, rng, sleep) -> InteractResult:
     button = await actions.first_visible(page, r.like)
     if button is None:
         return InteractResult(False, actions.selector_miss("the like button", r.like))
-    await button.click()
+    await button.click(timeout=CLICK_MS)
     await humanize.dwell(low=1.0, high=3.0, rng=rng, sleep=sleep)
     if await actions.wait_visible(page, r.liked, timeout_ms=CONFIRM_MS):
         return InteractResult(True, "liked")
@@ -223,7 +242,7 @@ async def _follow(page, r: Recipe, rng, sleep) -> InteractResult:
     button = await actions.first_visible(page, r.follow)
     if button is None:
         return InteractResult(False, actions.selector_miss("the follow button", r.follow))
-    await button.click()
+    await button.click(timeout=CLICK_MS)
     await humanize.dwell(low=1.5, high=4.0, rng=rng, sleep=sleep)
     if await actions.present(page, r.following):
         return InteractResult(True, "followed")
@@ -233,7 +252,7 @@ async def _follow(page, r: Recipe, rng, sleep) -> InteractResult:
 async def _comment(page, r: Recipe, text: str, rng, sleep) -> InteractResult:
     opener = await actions.first_visible(page, r.comment_open)
     if opener is not None:
-        await opener.click()
+        await opener.click(timeout=CLICK_MS)
         await humanize.dwell(low=0.8, high=2.0, rng=rng, sleep=sleep)
     editor = await actions.wait_visible(page, r.comment_editor, 15_000)
     if editor is None:
@@ -245,7 +264,7 @@ async def _comment(page, r: Recipe, text: str, rng, sleep) -> InteractResult:
         return InteractResult(
             False, actions.selector_miss("the comment post button", r.comment_submit)
         )
-    await submit.click()
+    await submit.click(timeout=CLICK_MS)
     await humanize.dwell(low=2.0, high=4.0, rng=rng, sleep=sleep)
     # Sticker hien thanh anh, khong tim duoc bang chu: o soan trong lai la dau hieu da gui.
     try:
@@ -272,7 +291,7 @@ async def _repost(page, r: Recipe, rng, sleep) -> InteractResult:
     button = await actions.first_visible(page, r.repost)
     if button is None:
         return InteractResult(False, actions.selector_miss("the repost item", r.repost))
-    await button.click()
+    await button.click(timeout=CLICK_MS)
     await humanize.dwell(low=1.5, high=3.0, rng=rng, sleep=sleep)
     if await actions.present(page, r.reposted):
         return InteractResult(True, "reposted")
