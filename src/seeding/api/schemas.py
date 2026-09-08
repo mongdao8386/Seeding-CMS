@@ -226,6 +226,8 @@ class ScheduleIn(BaseModel):
     # Ngay bat dau (gio dia phuong). None hoac hom nay = tu bay gio.
     start_date: date | None = None
     stagger_seconds: int = 3600
+    # Chi Reddit: dang vao subreddit nao. Bat buoc voi tai khoan Reddit.
+    subreddit: str | None = None
 
 
 class JobMove(BaseModel):
@@ -413,3 +415,5 @@ class SettingsOut(BaseModel):
     tiktok_interact_via_http: bool
     instagram_enabled: bool
     x_enabled: bool
+    reddit_enabled: bool
+    facebook_enabled: bool

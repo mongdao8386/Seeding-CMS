@@ -175,6 +175,31 @@ lên dòng thời gian của tài khoản:
 
 Facebook chưa có cả hai — mở trình duyệt làm tay.
 
+## 3h. Reddit và Facebook (phần 9)
+
+**Reddit** đi bằng API chính thức, không cần trình duyệt. Mỗi tài khoản tự tạo một
+*script app* tại reddit.com/prefs/apps rồi dán cùng lúc với tài khoản: cột `client_id`,
+`client_secret`, `username`, `password` (mẫu dán có sẵn các cột này). Có proxy gắn với
+profile thì đi qua proxy, không thì đi thẳng.
+
+- Đăng bài: chữ, ảnh hoặc video vào **một subreddit** — ô Subreddit hiện ra trong hộp
+  Lên lịch khi chọn tab Reddit. Không điền thì không lên lịch được.
+- Nuôi: upvote, "friend" (Reddit không có follow đúng nghĩa), bình luận — đích lấy từ
+  front page của chính tài khoản, ngưỡng "đang lên" tính bằng điểm.
+- Bài đã đăng: xoá và sửa đều được.
+
+**Facebook** chỉ có một đường: trình duyệt thật (Camoufox) với profile + proxy của acc,
+như bản cũ. Chậm (trang nặng qua proxy) và dễ gãy khi Facebook đổi giao diện — khi đó
+job báo rõ "Could not find … update the recipe" chứ không đổ lên tài khoản.
+
+- Đăng bài chữ hoặc chữ kèm ảnh; bình luận vào bài theo link.
+- Thả tim / follow / bình luận theo lịch làm được, nhưng **không có nuôi tự động**: đọc
+  feed bằng trình duyệt để chọn đích là quá nặng. Nuôi Facebook bằng tay qua *Mở trình
+  duyệt*.
+- Xoá / sửa bài, đổi danh tính: làm tay.
+
+Tắt bằng `REDDIT_ENABLED=false`, `FACEBOOK_ENABLED=false`.
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua

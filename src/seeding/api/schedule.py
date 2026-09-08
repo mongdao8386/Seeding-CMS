@@ -22,6 +22,7 @@ from seeding.domain.models import (
     CampaignGroup,
     ContentItem,
     JobStatus,
+    Platform,
     PostJob,
     PostKind,
     Profile,
@@ -113,6 +114,12 @@ async def schedule(body: ScheduleIn, s: AsyncSession = Depends(get_session)) -> 
     platforms = {a.platform for a in accounts}
     if len(platforms) != 1:
         raise HTTPException(422, "Một lần lên lịch chỉ cho một nền tảng.")
+    target: dict = {}
+    if accounts[0].platform is Platform.REDDIT:
+        subreddit = (body.subreddit or "").strip().lstrip("r/").strip("/")
+        if not subreddit:
+            raise HTTPException(422, "Reddit cần subreddit - điền ô Subreddit.")
+        target["subreddit"] = subreddit
     blocked = [a.handle for a in accounts if not readiness.check(a, a.profile).ready]
     if blocked:
         raise HTTPException(
@@ -141,7 +148,7 @@ async def schedule(body: ScheduleIn, s: AsyncSession = Depends(get_session)) -> 
         name=platforms.pop().value,
         platform=accounts[0].platform,
         post_kind=PostKind.POST,
-        target={},
+        target=target,
         account_ids=[str(a.id) for a in accounts],
     )
     s.add(group)

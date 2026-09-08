@@ -531,6 +531,7 @@ function ScheduleDialog({
 }) {
   const [picked, setPicked] = useState<Set<string>>(() => new Set(accounts.map((a) => a.id)));
   const [start, setStart] = useState(date);
+  const [subreddit, setSubreddit] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Job[] | null>(null);
@@ -544,6 +545,7 @@ function ScheduleDialog({
         content_id: content.id,
         account_ids: [...picked],
         start_date: start,
+        subreddit: platform === "reddit" ? subreddit.trim() || null : null,
       });
       setResult(jobs);
     } catch (e) {
@@ -595,6 +597,12 @@ function ScheduleDialog({
               <span className="w-24 text-muted">Bắt đầu</span>
               <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
             </label>
+            {platform === "reddit" && (
+              <label className="flex items-center gap-3">
+                <span className="w-24 text-muted">Subreddit</span>
+                <input value={subreddit} onChange={(e) => setSubreddit(e.target.value)} placeholder="vd: vietnam" className="mono min-h-[36px] grow px-2.5" />
+              </label>
+            )}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-muted">

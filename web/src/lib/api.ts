@@ -273,6 +273,8 @@ export type Settings = {
   tiktok_interact_via_http: boolean;
   instagram_enabled: boolean;
   x_enabled: boolean;
+  reddit_enabled: boolean;
+  facebook_enabled: boolean;
 };
 
 export type Post = {

@@ -147,6 +147,12 @@ _MODULES = (
     "seeding.platforms.x.warm",
     "seeding.platforms.x.identity",
     "seeding.platforms.x.manage",
+    "seeding.platforms.reddit.publish",
+    "seeding.platforms.reddit.interact",
+    "seeding.platforms.reddit.warm",
+    "seeding.platforms.reddit.manage",
+    "seeding.platforms.facebook.publish",
+    "seeding.platforms.facebook.interact",
 )
 
 

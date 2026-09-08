@@ -76,6 +76,8 @@ export default function SettingsPage() {
           <Row ok={!!settings.data?.tiktok_interact_via_http} text={settings.data?.tiktok_interact_via_http ? "Nuôi TikTok qua HTTP" : "Nuôi TikTok qua HTTP: tắt"} />
           <Row ok={!!settings.data?.instagram_enabled} text={settings.data?.instagram_enabled ? "Instagram qua API app (aiograpi)" : "Instagram: tắt"} />
           <Row ok={!!settings.data?.x_enabled} text={settings.data?.x_enabled ? "X qua twifork" : "X: tắt"} />
+          <Row ok={!!settings.data?.reddit_enabled} text={settings.data?.reddit_enabled ? "Reddit qua API (script app)" : "Reddit: tắt"} />
+          <Row ok={!!settings.data?.facebook_enabled} text={settings.data?.facebook_enabled ? "Facebook bằng trình duyệt (chậm, không nuôi tự động)" : "Facebook: tắt"} />
           {settings.data?.x_enabled && (
             <Row
               ok={sys.data?.x_library !== false}

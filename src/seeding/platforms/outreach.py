@@ -93,15 +93,17 @@ def budget_for(account: Account, now: datetime, rng: random.Random) -> Budget:
     return Budget(likes, follows, min(comments, likes))
 
 
-def pick_targets(items: list, *, own_handles: set[str], rng: random.Random) -> list:
+def pick_targets(
+    items: list, *, own_handles: set[str], rng: random.Random, min_views: int = MIN_VIEWS
+) -> list:
     """Loc feed thanh danh sach dich: bo tai khoan cua minh, bo video nho, moi creator
-    mot video, xao thu tu."""
+    mot video, xao thu tu. `min_views` la nguong "dang len" - Reddit do bang diem."""
     seen: set[str] = set()
     out: list = []
     for it in items:
         if it.author_handle in own_handles or it.author_handle in seen:
             continue
-        if it.views < MIN_VIEWS:
+        if it.views < min_views:
             continue
         seen.add(it.author_handle)
         out.append(it)
@@ -186,8 +188,10 @@ async def plan_for_account(
     day: date | None = None,
     now: datetime | None = None,
     rng: random.Random | None = None,
+    min_views: int = MIN_VIEWS,
 ) -> list[ActivityJob]:
-    """Lich huong ra ngoai cho mot tai khoan trong mot ngay. Da co thi khong lam lai."""
+    """Lich huong ra ngoai cho mot tai khoan trong mot ngay. Da co thi khong lam lai.
+    `profile` co the None voi nen tang di bang API (Reddit)."""
     now = now or datetime.now(UTC)
     day = day or now.date()
     rng = rng or random.Random(f"outreach:{account.id}:{day.isoformat()}")
@@ -202,7 +206,7 @@ async def plan_for_account(
     )
     async with source_factory(profile) as src:
         items = await src.feed(FEED_COUNT)
-    targets = pick_targets(items, own_handles=own, rng=rng)
+    targets = pick_targets(items, own_handles=own, rng=rng, min_views=min_views)
     if not targets:
         log.warning("outreach.no_targets", handle=account.handle, feed=len(items))
         return []
@@ -255,6 +259,8 @@ async def plan_platform(
             if account is None or not readiness.check(account, profile).ready:
                 continue
             # Nguon doc profile.proxy; get_for_account khong nap san. Nap tuong minh.
+            if profile is None:
+                continue
             if profile.proxy_id is not None and "proxy" not in profile.__dict__:
                 profile.proxy = await session.get(Proxy, profile.proxy_id)
             total += len(
@@ -287,7 +293,9 @@ def is_outward(job: ActivityJob) -> bool:
     }
 
 
-async def ensure_proxy_loaded(session: AsyncSession, profile: Profile) -> None:
+async def ensure_proxy_loaded(session: AsyncSession, profile: Profile | None) -> None:
     """profile.proxy co the chua duoc nap trong phien async - nap tuong minh, khong lazy."""
+    if profile is None:
+        return
     if profile.proxy_id is not None and "proxy" not in profile.__dict__:
         profile.proxy = await session.get(Proxy, profile.proxy_id)

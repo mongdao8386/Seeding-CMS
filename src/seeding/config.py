@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # profile, khong trinh duyet). X xoay query id vai tuan mot lan - khi thu vien lech,
     # worker bao "thu vien X lech" o Cai dat thay vi do loi len tai khoan.
     x_enabled: bool = True
+    # Reddit qua API chinh thuc (PRAW): moi tai khoan mot script app, bi mat trong
+    # Account.secrets. Khong can trinh duyet.
+    reddit_enabled: bool = True
+    # Facebook bang trinh duyet that (Camoufox + proxy cua profile): cham, de gay theo
+    # A/B test, nhung la duong duy nhat cho trang ca nhan. Khong co nuoi tu dong.
+    facebook_enabled: bool = True
 
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic
