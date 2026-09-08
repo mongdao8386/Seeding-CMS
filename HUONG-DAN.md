@@ -146,8 +146,11 @@ qua HTTP là cách rẻ nhất để biết acc nào cần đăng nhập lại.
 đo cùng ngày, cửa sổ 4 phút: P02 không lần nào; P01, P04, P05, P06 mỗi proxy một lần
 được (131 / 151 / 175 / 216 s) một lần không; P03 109–222 s, là proxy ổn nhất. Nghĩa là
 proxy dân cư này "lúc được lúc không" quanh mốc 2–4 phút, nên cửa sổ chờ 8 phút là bắt
-buộc, và mỗi job thả tim nên tính là có thể phải thử lại một lần. Đo lại bằng
-`python scripts/check_proxy_tiktok.py P03 P04` mỗi khi thêm proxy mới. Acc trên proxy
+buộc, và mỗi job thả tim nên tính là có thể phải thử lại một lần. Từ 08/09/2026 mỗi job
+trình duyệt tự ghi kết quả cho proxy của nó: bảng proxy ở màn hình Tài khoản hiện
+"TikTok 3/5 · ~150s" (số lần hiện trang / số lần mở, thời gian hiện trung bình) — proxy
+nào toàn 0/n thì thay. Đo tay bằng `python scripts/check_proxy_tiktok.py P03 P04` khi
+thêm proxy mới. Acc trên proxy
 nào không tải nổi trang thì job thả tim báo "page never rendered" và thử lại — đổi
 proxy cho acc đó. `BROWSER_STATIC_BYPASS` (cho CDN tĩnh đi
 thẳng) đã thử: TikTok trả trang "Không thể mở trang", nên để trống.
