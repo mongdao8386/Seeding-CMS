@@ -13,6 +13,7 @@ from seeding.api.schemas import StatsOut, SystemOut
 from seeding.config import get_settings
 from seeding.domain import readiness
 from seeding.domain.models import Account, AccountStatus, Profile, Proxy
+from seeding.ops import flags
 
 router = APIRouter(tags=["system"])
 
@@ -75,4 +76,13 @@ async def system(s: AsyncSession = Depends(get_session)) -> SystemOut:
             )
     except Exception:
         detail = "không chạy"
-    return SystemOut(api=True, database=db_ok, signer=signer_ok, signer_detail=detail)
+
+    x_lib = await flags.get_flag("library:x")
+    return SystemOut(
+        api=True,
+        database=db_ok,
+        signer=signer_ok,
+        signer_detail=detail,
+        x_library=None if x_lib is None else bool(x_lib.get("ok")),
+        x_library_detail=None if x_lib is None else x_lib.get("detail"),
+    )

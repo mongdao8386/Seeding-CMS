@@ -24,6 +24,7 @@ from seeding.db import SessionLocal
 from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
 from seeding.domain.models import AccountStatus, Attempt, JobStatus, PostJob
+from seeding.ops import flags
 from seeding.platforms import base as adapters
 from seeding.scheduling import governor
 from seeding.scheduling import slots as slots_mod
@@ -378,10 +379,20 @@ async def health_sweep(ctx: dict) -> int:
                 profile.proxy = await session.get(Proxy, profile.proxy_id)
             # Nen tang co duong kiem nhe (HTTP qua proxy) thi dung; khong thi mo trinh duyet.
             checker = adapters.get_health(account.platform)
+            try:
+                if checker is not None:
+                    ok, detail = await checker(profile)
+                else:
+                    ok, detail = await check_session(profile, account.platform)
+            except adapters.LibraryBroken as exc:
+                # Thu vien lech, khong phai tai khoan: khong ghi len profile, bao mot lan.
+                await _library_broken(account.platform, str(exc))
+                continue
             if checker is not None:
-                ok, detail = await checker(profile)
-            else:
-                ok, detail = await check_session(profile, account.platform)
+                await flags.set_flag(
+                    f"library:{account.platform.value}",
+                    {"ok": True, "detail": detail, "at": datetime.now(UTC).isoformat()},
+                )
             needs_human = await profiles_mod.mark_health(
                 session, profile, ok, detail=detail, threshold=settings.health_fail_threshold
             )
@@ -392,3 +403,21 @@ async def health_sweep(ctx: dict) -> int:
     if checked:
         log.info("health_sweep.done", checked=checked)
     return checked
+
+
+async def _library_broken(platform, detail: str) -> None:
+    """Ghi co cho Cai dat va bao ra ngoai - toi da mot lan moi 12 tieng."""
+    from seeding.ops import alerts
+
+    log.error("library.broken", platform=platform.value, detail=detail)
+    await flags.set_flag(
+        f"library:{platform.value}",
+        {"ok": False, "detail": detail, "at": datetime.now(UTC).isoformat()},
+    )
+    gate = f"library-alerted:{platform.value}"
+    if alerts.configured() and await flags.get_flag(gate) is None:
+        alerts.send(
+            f"[seeding] Thư viện {platform.value} lệch với nền tảng, mọi job {platform.value} "
+            f"sẽ hỏng cho tới khi cập nhật (pip install -U twifork). {detail[:200]}"
+        )
+        await flags.set_flag(gate, {"at": datetime.now(UTC).isoformat()}, ttl_seconds=12 * 3600)

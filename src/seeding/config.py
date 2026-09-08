@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # Instagram qua aiograpi (API rieng cua app, cookie sessionid, khong trinh duyet):
     # dang bai, nuoi va kiem phien. Tat thi tai khoan Instagram chi con mo tay.
     instagram_enabled: bool = True
+    # X qua twifork (fork con bao tri cua twikit; cookie auth_token + ct0, proxy cua
+    # profile, khong trinh duyet). X xoay query id vai tuan mot lan - khi thu vien lech,
+    # worker bao "thu vien X lech" o Cai dat thay vi do loi len tai khoan.
+    x_enabled: bool = True
 
     # Bao ra ngoai khi co tai khoan can nguoi. De trong = tat.
     # discord | slack | telegram | generic

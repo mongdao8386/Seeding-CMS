@@ -159,6 +159,9 @@ class SystemOut(BaseModel):
     database: bool
     signer: bool
     signer_detail: str | None
+    # None = chua kiem lan nao (chua co tai khoan X, hoac worker chua quet).
+    x_library: bool | None = None
+    x_library_detail: str | None = None
 
 
 # ------------------------------------------------------------------- noi dung
@@ -349,3 +352,4 @@ class SettingsOut(BaseModel):
     tiktok_post_via_http: bool
     tiktok_interact_via_http: bool
     instagram_enabled: bool
+    x_enabled: bool

@@ -68,7 +68,7 @@ devices. Thêm lại khi cần, không phải vì đã có.
 | 3 | Nuôi TikTok: For You, thả tim/follow/bình luận người lạ | Dòng thời gian trong Chi tiết tài khoản |
 | 4 | Vận hành: hàng đợi chờ người, health, cảnh báo Telegram | Màn hình Tổng quan |
 | 5 | Instagram qua aiograpi: đăng ảnh/Reel, nuôi từ Reels đề xuất, kiểm phiên HTTP | Tab Instagram dùng được y như TikTok |
-| 6 | X qua twifork, health check theo GraphQL id | Đăng + nuôi X |
+| 6 | X qua twifork: đăng chữ/media, nuôi từ For You, kiểm phiên; thư viện lệch báo riêng, không đổ lên tài khoản | Tab X dùng được; Cài đặt báo khi twifork lệch |
 | 7 | Đổi username/tên/avatar theo lịch; chatbot (định nghĩa sau) | |
 
 Mỗi phần: code + test + một đoạn trong `HUONG-DAN.md`, rồi commit.

@@ -30,6 +30,11 @@ class PublishResult:
     metrics: dict = field(default_factory=dict)
 
 
+class LibraryBroken(RuntimeError):
+    """Thu vien cua mot nen tang lech voi nen tang do (X xoay query id, handshake doi
+    dang). Khong phai loi cua tai khoan: khong ghi len profile, bao he thong mot lan."""
+
+
 @dataclass(slots=True)
 class InteractResult:
     """Ket qua mot hanh dong nuoi (tha tim / follow / binh luan).
@@ -114,6 +119,9 @@ _MODULES = (
     "seeding.platforms.instagram.publish",
     "seeding.platforms.instagram.interact",
     "seeding.platforms.instagram.warm",
+    "seeding.platforms.x.publish",
+    "seeding.platforms.x.interact",
+    "seeding.platforms.x.warm",
 )
 
 

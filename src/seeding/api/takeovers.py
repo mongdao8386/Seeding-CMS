@@ -107,6 +107,7 @@ async def settings_out() -> SettingsOut:
         tiktok_post_via_http=st.tiktok_post_via_http,
         tiktok_interact_via_http=st.tiktok_interact_via_http,
         instagram_enabled=st.instagram_enabled,
+        x_enabled=st.x_enabled,
     )
 
 

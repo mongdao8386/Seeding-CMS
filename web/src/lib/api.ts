@@ -141,6 +141,8 @@ export type SystemStatus = {
   database: boolean;
   signer: boolean;
   signer_detail: string | null;
+  x_library: boolean | null;
+  x_library_detail: string | null;
 };
 
 export type ImportCheck = {
@@ -270,6 +272,7 @@ export type Settings = {
   tiktok_post_via_http: boolean;
   tiktok_interact_via_http: boolean;
   instagram_enabled: boolean;
+  x_enabled: boolean;
 };
 
 export type KindCount = { planned: number; done: number; failed: number };

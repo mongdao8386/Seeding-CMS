@@ -22,6 +22,8 @@ dependencies = [
     "structlog>=24.4",
     # Instagram qua API rieng cua app (async fork cua instagrapi).
     "aiograpi>=1.12",
+    # X qua API noi bo cua web (fork con bao tri cua twikit; import van la `twikit`).
+    "twifork>=2.4",
 
     # Kho mat: cookie jar va ma 2FA.
     "cryptography>=44",
@@ -77,6 +79,8 @@ asyncio_mode = "auto"
 # cua asyncpg thi gan voi loop da tao ra no - moi test mot loop se lam pool vo.
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+# js2py (twifork keo theo) goi co_lnotab da bo tren 3.13+; khong phai viec cua ta.
+filterwarnings = ["ignore:co_lnotab is deprecated:DeprecationWarning"]
 markers = [
     "browser: can mo Camoufox that - cham, chay bang: pytest -m browser",
     "media: chay ffmpeg that - cham, chay bang: pytest -m media",

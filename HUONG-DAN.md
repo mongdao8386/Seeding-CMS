@@ -118,11 +118,36 @@ tự đăng lại — có thể bài đã lên.
 
 Tắt bằng `INSTAGRAM_ENABLED=false`.
 
+## 3e. X (phần 6)
+
+Không mở trình duyệt. X đi bằng API nội bộ của trang web qua thư viện **twifork** (fork
+còn bảo trì của twikit), với hai cookie `auth_token` và `ct0`, qua proxy của profile.
+Dán tài khoản với `platform` = `x`; cột cookie phải có **cả hai** cookie đó.
+
+- **Đăng bài**: chữ không, hoặc chữ kèm một ảnh / video / gif. Quá 280 ký tự thì cắt ở
+  ranh giới từ và thêm dấu ba chấm.
+- **Nuôi**: thả tim, follow, trả lời — cùng nhịp với TikTok và Instagram, đích lấy từ
+  For You của chính tài khoản. Trả lời được ghép thêm một đuôi nhỏ (emoji, dấu chấm) để
+  X không chặn vì trùng chữ.
+- **Kiểm phiên**: một request nhẹ qua proxy.
+
+**Thư viện X lệch.** X đổi mã (query id) của các API nội bộ vài tuần một lần. Khi đó
+*mọi* job X hỏng cùng lúc — đó không phải lỗi tài khoản, và hệ thống không ghi nó lên
+tài khoản: Cài đặt hiện "Thư viện X lệch", cảnh báo gửi ra ngoài **một lần mỗi 12
+tiếng**, job X được hẹn lại chứ không vào "Cần bạn". Sửa:
+
+```
+.venv\Scripts\pip install -U twifork
+```
+
+rồi bật lại worker. Nếu bản mới nhất vẫn lệch, chờ tác giả twifork vá (thường trong
+vài ngày) hoặc tắt X bằng `X_ENABLED=false` cho tới lúc đó.
+
 ## 4. Đăng bài đi đường nào
 
 TikTok đăng bằng **HTTP** thẳng tới các endpoint của TikTok Studio (7 bước, ~4 giây) qua
 proxy của acc, ký bằng signer ở `tools/tiktok-signer`. Instagram đăng qua API của app
-(aiograpi). Cả hai không mở trình duyệt. Bước đăng cuối không bao giờ tự thử lại — không
+(aiograpi), X qua API nội bộ của web (twifork). Không cái nào mở trình duyệt. Bước đăng cuối không bao giờ tự thử lại — không
 rõ kết quả thì bài vào trạng thái **cần bạn**, vì thử lại có thể đăng hai lần.
 
 ## 5. Khi có sự cố
