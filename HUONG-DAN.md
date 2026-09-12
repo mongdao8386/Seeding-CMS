@@ -4,13 +4,15 @@ Bản mới, viết lại theo từng phần của `docs/REBUILD.md`. Bản cũ 
 
 ## 1. Bật lên
 
-```
-Start.cmd
-```
+Bấm **`Seeding.exe`** ở thư mục gốc. Ghim nó vào taskbar để bật bằng một cú bấm: chuột
+phải `Seeding.exe` → *Hiện thêm tuỳ chọn* → *Ghim vào thanh tác vụ* (hoặc kéo vào
+taskbar). Bấm khi hệ thống đang chạy thì chỉ mở dashboard; chưa chạy thì nó chạy
+`Start.cmd`. Tắt: `Stop.cmd` (hoặc `Seeding.exe --stop`).
 
-Nó bật Postgres + Redis (Docker), API (cổng 8000), worker, signer (8080) và dashboard
-(3000), rồi in `API_TOKEN` ra màn hình. Mở **http://localhost:3000**, dán token. Tắt bằng
-`Stop.cmd`.
+`Start.cmd` bật Postgres + Redis (Docker), API (cổng 8000), worker, signer (8080) và
+dashboard (3000), rồi in `API_TOKEN` ra màn hình và tự mở **http://localhost:3000**; dán
+token lần đầu. Muốn đổi icon hay sửa nút: `launcher/Seeding.cs`, `scripts/make_icon.py`,
+build lại bằng `scripts/build_launcher.ps1` (dùng csc.exe có sẵn trong Windows).
 
 Điện thoại cùng wifi: `http://<IP máy>:3000` — giao diện có thanh dưới cho màn hẹp.
 
