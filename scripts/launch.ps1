@@ -27,7 +27,7 @@ $venvPython = Join-Path $root '.venv\Scripts\python.exe'
 
 $API_PORT = 8000
 $WEB_PORT = 3000
-# Signer ky X-Bogus/X-Gnarly cho buoc dang bai TikTok (tools	iktok-signer).
+# Signer ky X-Bogus/X-Gnarly cho buoc dang bai TikTok (tools\tiktok-signer).
 $SIGNER_PORT = 8080
 
 # ------------------------------------------------------------------ tien ich
@@ -454,8 +454,18 @@ if ($running) {
     # run_worker.cmd la vong lap: worker chet (loi la, mat Redis, sap nguon giua job) thi
     # 5 giay sau tu bat lai. 08/09/2026: cua so worker con mo ma tien trinh python da chet
     # tu luc nao, lich nuoi dung im ca buoi khong ai biet.
-    StartWindow 'Seeding - Worker' "`"$root\scriptsun_worker.cmd`""
-    Ok "dang khoi dong (day la thu that su dang bai)"
+    $workerCmd = Join-Path (Join-Path $root 'scripts') 'run_worker.cmd'
+    StartWindow 'Seeding - Worker' "`"$workerCmd`""
+    # Cho worker len THAT. Truoc 21/09/2026 launcher in OK ma khong kiem, va mot byte hong trong
+    # duong dan lam worker khong bao gio chay suot hai tuan ma man hinh van bao khoe.
+    $workerUp = WaitFor "Worker" 40 {
+        return [bool](Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+            Where-Object { $_.CommandLine -like '*WorkerSettings*' })
+    }
+    if (-not $workerUp) {
+        Die "Worker khong len sau 40 giay" @('Xem cua so "Seeding - Worker" de biet loi.')
+    }
+    Ok "da len (day la thu that su dang bai va nuoi acc)"
 }
 
 Step "Bat dashboard"
