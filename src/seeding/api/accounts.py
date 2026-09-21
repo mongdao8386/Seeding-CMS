@@ -138,12 +138,15 @@ def _report_out(report: bulk.Report) -> dict:
 async def import_check(
     text: str = Form(...),
     platform: Platform = Form(Platform.TIKTOK),
+    role: AccountRole = Form(AccountRole.CHANNEL),
     s: AsyncSession = Depends(get_session),
 ) -> dict:
     """Kiem doan dan vao. KHONG tao gi ca."""
     if len(text) > 2_000_000:
         raise HTTPException(413, "Nhiều chữ hơn một danh sách tài khoản nên có.")
-    report = await bulk.check_against_db(s, bulk.parse(text, default_platform=platform))
+    report = await bulk.check_against_db(
+        s, bulk.parse(text, default_platform=platform, default_role=role)
+    )
     return _report_out(report)
 
 
@@ -164,7 +167,9 @@ async def import_accounts(
     """
     if len(text) > 2_000_000:
         raise HTTPException(413, "Nhiều chữ hơn một danh sách tài khoản nên có.")
-    report = await bulk.check_against_db(s, bulk.parse(text, default_platform=platform))
+    report = await bulk.check_against_db(
+        s, bulk.parse(text, default_platform=platform, default_role=role)
+    )
 
     if report.problems and not partial:
         return ImportResult(

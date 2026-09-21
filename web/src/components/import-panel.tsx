@@ -177,6 +177,12 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
           {result.created > 0 ? (
             <>
               Đã tạo <b>{result.created}</b> tài khoản, {result.profiles_with_session} có phiên đăng nhập.
+              {result.created > result.profiles_with_session && (
+                <>
+                  {" "}
+                  {result.created - result.profiles_with_session} acc chưa có phiên (người bán không giao cookie): mở từng acc, bấm Mở trình duyệt và đăng nhập bằng mật khẩu, mã xác minh lấy bằng nút Lấy mã từ email.
+                </>
+              )}
             </>
           ) : (
             "Chưa nhập gì."

@@ -161,6 +161,9 @@ def looks_like_header(cells: list[str]) -> bool:
 
 def infer_header(cells: list[str]) -> tuple[str, ...] | None:
     """Doan dinh dang tu DONG DU LIEU dau tien khi file khong co tieu de."""
+    # 6 cot (khong mailKP, khong cookie) cung la dinh dang OAuth: nhan ra bang client_id GUID.
+    if len(cells) >= 6 and "@" in cells[2] and _GUID.match(cells[5].strip()):
+        return SELLER_OAUTH_HEADER
     if len(cells) >= 8 and "@" in cells[2] and (_GUID.match(cells[5]) or "@" in cells[6]):
         return SELLER_OAUTH_HEADER
     if len(cells) >= 4 and "@" in cells[2]:
@@ -354,6 +357,14 @@ def parse(
                     )
                 )
                 continue
+        # cookie nam nham cot: nguoi ban bo cot mailKP o vai dong, chuoi cookie troi vao cho
+        # cua mail khoi phuc. Mot dia chi mail khong bao gio co dang `a=b; c=d`.
+        stray = row.get("backup_email", "")
+        if stray and "=" in stray and "@" not in stray.split(";")[0]:
+            # Cookie co the con bi tach tiep boi dau phan cach ben trong no: noi lai.
+            rest = row.get("cookie", "")
+            row["cookie"] = stray + (delimiter + rest if rest else "")
+            row["backup_email"] = ""
         handle = row.get("handle", "") or (row.get("username", "") if username_as_handle else "")
 
         if not any(row.values()):
@@ -554,23 +565,26 @@ async def apply(
 
     # Profile tao SAU khi tai khoan da commit: create_profile can account.id that.
     for account, row in zip(created, rows, strict=True):
-        if not row.cookie:
-            continue
-        try:
-            parsed = cookies_mod.parse(row.cookie, account.platform)
-        except cookies_mod.CookieError as exc:
-            warnings.append(f"Line {row.line} ({row.handle}): cookie not usable — {exc}")
-            continue
+        # Moi acc deu co profile, CO HAY KHONG co cookie: acc khong cookie phai dang nhap
+        # trong trinh duyet cua profile (mat khau + ma tu email), ma khong co profile thi nut
+        # "Mo trinh duyet" khong co gi de mo (21/09/2026: 80/100 acc nguoi ban giao khong
+        # kem cookie). Acc xay kenh lay mot cho proxy; booster khong can.
+        parsed = None
+        if row.cookie:
+            try:
+                parsed = cookies_mod.parse(row.cookie, account.platform)
+            except cookies_mod.CookieError as exc:
+                warnings.append(f"Line {row.line} ({row.handle}): cookie not usable — {exc}")
 
         profile = await profiles_mod.create_profile(
             session,
             account,
             proxy=pool.take() if pool and row.role is not AccountRole.BOOSTER else None,
         )
-        await profiles_mod.save_cookies(session, profile, parsed.storage_state)
-
-        for warning in parsed.warnings:
-            warnings.append(f"Line {row.line} ({row.handle}): {warning}")
+        if parsed is not None:
+            await profiles_mod.save_cookies(session, profile, parsed.storage_state)
+            for warning in parsed.warnings:
+                warnings.append(f"Line {row.line} ({row.handle}): {warning}")
         if profile.proxy_id is None and row.role is not AccountRole.BOOSTER:
             warnings.append(
                 f"Line {row.line} ({row.handle}): profile created with NO proxy. It will go out "

@@ -20,7 +20,7 @@ from seeding.browser.session import PROBES, open_profile
 from seeding.db import SessionLocal, engine
 from seeding.domain import profiles as profiles_mod
 from seeding.domain import readiness
-from seeding.domain.models import Account, Profile
+from seeding.domain.models import Account, AccountRole, Profile
 from seeding.platforms import base as adapters
 
 # Luu cookie moi tung nay giay. Trinh duyet mo lau ma sap nguon hay treo may thi van
@@ -46,7 +46,8 @@ async def main(profile_id: str, url: str | None) -> int:
         # khong co proxy thi mo ra la duyet bang IP nha ban, va TikTok ghi lai dieu do
         # y het nhu khi worker lam. Bat buoc phai co proxy.
         verdict = readiness.check(account, profile)
-        if not verdict.ready and profile.proxy_id is None:
+        booster = account.role is AccountRole.BOOSTER  # di khong proxy theo thiet ke
+        if not verdict.ready and profile.proxy_id is None and not booster:
             print(f"Khong mo duoc: {verdict.reason}")
             return 2
 

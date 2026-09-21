@@ -126,7 +126,7 @@ export default function AccountPage() {
                   Tạm dừng
                 </button>
               )}
-              <button className="btn btn-primary" disabled={busy || !a.profile_id || !a.proxy_label} onClick={open}>
+              <button className="btn btn-primary" disabled={busy || !a.profile_id || (!a.proxy_label && a.role !== "booster")} onClick={open}>
                 {busy ? "Đang mở…" : "Mở trình duyệt"}
               </button>
               <button className="btn btn-ghost text-bad-text" disabled={busy} onClick={remove}>

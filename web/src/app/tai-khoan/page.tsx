@@ -211,6 +211,8 @@ function AccountList({
         r = { ...again, deleted: r.deleted + again.deleted };
       }
       setNote(`Đã xoá ${r.deleted} tài khoản.`);
+      // Ghi chu tu tat: nam li sau khi nhap lai thi doc nhu vua xoa cac acc moi.
+      setTimeout(() => setNote(null), 6000);
       setSelected(new Set());
       onChange();
     } catch (e) {

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.api.deps import get_session
 from seeding.api.schemas import OpenProfileIn, OpenProfileOut
-from seeding.domain.models import Account, Profile
+from seeding.domain.models import Account, AccountRole, Profile
 from seeding.ops import desktop
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
@@ -32,7 +32,8 @@ async def open_profile_window(
     account = await s.get(Account, profile.account_id)
     if account is None:
         raise HTTPException(409, "Profile này không gắn với tài khoản nào")
-    if profile.proxy_id is None:
+    # Acc tuong tac cheo (booster) di khong proxy theo lua chon cua nguoi van hanh: mo duoc.
+    if profile.proxy_id is None and account.role is not AccountRole.BOOSTER:
         raise HTTPException(409, "Chưa có proxy — mở ra là đi bằng IP thật của bạn.")
 
     url = body.url if body else None
