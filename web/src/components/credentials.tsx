@@ -12,11 +12,25 @@ const LABEL: Record<string, string> = {
   recovery_email: "Email",
   recovery_password: "Mật khẩu email",
   totp_seed: "2FA (seed)",
+  backup_email: "Mail khôi phục",
+  mail_refresh_token: "Refresh token mail",
+  mail_client_id: "Client ID mail",
   client_id: "Client ID",
   client_secret: "Client secret",
 };
-const HIDDEN = new Set(["password", "recovery_password", "totp_seed", "client_secret"]);
-const ORDER = ["username", "password", "recovery_email", "recovery_password", "totp_seed", "client_id", "client_secret"];
+const HIDDEN = new Set(["password", "recovery_password", "totp_seed", "client_secret", "mail_refresh_token"]);
+const ORDER = [
+  "username",
+  "password",
+  "recovery_email",
+  "recovery_password",
+  "backup_email",
+  "totp_seed",
+  "mail_refresh_token",
+  "mail_client_id",
+  "client_id",
+  "client_secret",
+];
 
 async function copy(text: string) {
   try {

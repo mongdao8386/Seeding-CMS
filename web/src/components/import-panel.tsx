@@ -6,9 +6,24 @@ import { api, type ImportCheck, type ImportResult, type Platform, type ProxyImpo
 import { PLATFORMS, PLATFORM_LABEL } from "@/components/ui";
 
 /**
- * Dán tài khoản theo định dạng người bán: username|password|hotmail|pass_hotmail|cookie
- * (có header hay không đều được). Kiểm trước, tạo sau.
+ * Dán tài khoản theo định dạng người bán, có dòng tiêu đề hay không đều được:
+ *   username|password|hotmail|pass_hotmail|cookie
+ *   username|passtiktok|email|password|refresh_token|client_id|mailKP|cookie
+ * Kiểm trước, tạo sau; luôn nói lại các cột đã được hiểu thế nào.
  */
+const COLUMN_VI: Record<string, string> = {
+  "handle + username": "tên acc",
+  handle: "tên acc",
+  password: "mật khẩu acc",
+  recovery_email: "email",
+  recovery_password: "mật khẩu email",
+  backup_email: "mail khôi phục",
+  mail_refresh_token: "refresh token mail",
+  mail_client_id: "client id mail",
+  totp_seed: "2FA",
+  cookie: "cookie",
+};
+
 export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
   const [text, setText] = useState("");
   const [platform, setPlatform] = useState<Platform>("tiktok");
@@ -116,6 +131,28 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
               </span>
             )}
           </div>
+          {(check.inferred_header || Object.keys(check.renamed_columns).length > 0 || check.unknown_columns.length > 0) && (
+            <div className="text-xs text-muted">
+              {check.inferred_header && (
+                <div>
+                  Không có dòng tiêu đề, hiểu là: <span className="mono">{check.inferred_header}</span>
+                </div>
+              )}
+              {Object.keys(check.renamed_columns).length > 0 && (
+                <div>
+                  Cột được hiểu:{" "}
+                  {Object.entries(check.renamed_columns)
+                    .map(([from, to]) => `${from} → ${COLUMN_VI[to] ?? to}`)
+                    .join(" · ")}
+                </div>
+              )}
+              {check.unknown_columns.length > 0 && (
+                <div className="text-warn-text">
+                  Cột không hiểu, sẽ bị bỏ qua: <span className="mono">{check.unknown_columns.join(", ")}</span>
+                </div>
+              )}
+            </div>
+          )}
           {problems > 0 && (
             <ul className="text-sm text-muted">
               {check.problems.slice(0, 6).map((p) => (

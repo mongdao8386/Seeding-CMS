@@ -15,7 +15,12 @@ Cot tuy chon:  persona, daily_cap, start_warmup, va bat ky cot bi mat nao duoi d
 
 Cot bi mat duoc ma hoa truoc khi ghi xuong, giong het duong tao tung cai:
     Reddit           client_id, client_secret, username, password
-    Nen tang browser password, totp_seed, recovery_email
+    Nen tang browser password, totp_seed, recovery_email, recovery_password,
+                     mail_refresh_token, mail_client_id, backup_email
+
+Dinh dang nguoi ban (co hay khong co dong tieu de deu nhan):
+    username|password|hotmail|pass_hotmail|cookie
+    username|passtiktok|email|password|refresh_token|client_id|mailKP|cookie
 
 CANH BAO nam trong tai lieu chu khong chi o day: mot file CSV chua mat khau la mot
 file mat khau nam tren o dia. Xoa no sau khi nhap xong.
@@ -25,6 +30,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -48,6 +54,12 @@ SECRET_FIELDS = (
     # Mat khau cua hom thu khoi phuc. Acc mua san hau nhu luon di kem, va thieu no thi
     # den luc nen tang doi xac minh qua email la het duong.
     "recovery_password",
+    # Hotmail/Outlook OAuth2 di kem acc mua san: doc hom thu lay ma xac minh ma khong can
+    # mat khau. `client_id` cua hom thu KHAC `client_id` cua app Reddit - xem resolve_headers.
+    "mail_refresh_token",
+    "mail_client_id",
+    # "mail KP" (mail khoi phuc) cua chinh hom thu do.
+    "backup_email",
 )
 
 # `cookie` KHONG nam trong SECRET_FIELDS: no khong di vao vault cua Account ma di vao
@@ -85,7 +97,76 @@ ALIASES = {
     "twofa": "totp_seed",
     "secret_2fa": "totp_seed",
     "cookies": "cookie",
+    "refresh_token": "mail_refresh_token",
+    "refreshtoken": "mail_refresh_token",
+    "mailkp": "backup_email",
+    "mail_kp": "backup_email",
+    "emailkp": "backup_email",
+    "email_kp": "backup_email",
+    "mailkhoiphuc": "backup_email",
+    "mail_khoi_phuc": "backup_email",
+    "mail_recovery": "backup_email",
+    "recovery_mail": "backup_email",
 }
+
+# Cot mat khau RIENG cua nen tang: passtiktok, pass_fb, tiktok_pass, passacc... File co cot
+# nay thi cot `password` tran (thuong dung ngay sau `email`) la mat khau CUA HOM THU.
+_PLATFORM_WORDS = "tiktok|tik|tt|fb|facebook|ig|insta|instagram|x|twitter|reddit|acc|account|nick"
+_ACCOUNT_PASS = re.compile(
+    rf"^(?:pass(?:word)?[_\-\s]?(?:{_PLATFORM_WORDS})|(?:{_PLATFORM_WORDS})[_\-\s]?pass(?:word)?)$"
+)
+_GUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+# Hai dinh dang nguoi ban hay giao KHONG kem dong tieu de.
+SELLER_HEADER = ("username", "password", "hotmail", "pass_hotmail", "cookie")
+SELLER_OAUTH_HEADER = (
+    "username",
+    "passtiktok",
+    "email",
+    "password",
+    "refresh_token",
+    "client_id",
+    "mailkp",
+    "cookie",
+)
+
+
+def resolve_headers(raw: list[str], default_platform: Platform | None = None) -> list[str]:
+    """Ten cot cua nguoi ban -> ten cua he thong, co xet NGU CANH ca dong tieu de.
+
+    `username|passtiktok|email|password|refresh_token|client_id|mailKP|cookie`: o day
+    `password` la mat khau email (mat khau TikTok da co cot rieng), va `client_id` la cua
+    hom thu (di cung refresh_token), khong phai app Reddit.
+    """
+    has_account_pass = any(_ACCOUNT_PASS.match(h) for h in raw)
+    out: list[str] = []
+    for h in raw:
+        if _ACCOUNT_PASS.match(h):
+            out.append("password")
+        elif has_account_pass and h in ("password", "pass"):
+            out.append("recovery_password")
+        else:
+            out.append(ALIASES.get(h, h))
+    if "mail_refresh_token" in out and default_platform is not Platform.REDDIT:
+        out = ["mail_client_id" if n == "client_id" else n for n in out]
+    return out
+
+
+def looks_like_header(cells: list[str]) -> bool:
+    """Dong dau la tieu de khi co it nhat hai o la TEN COT (khong phai du lieu)."""
+    names = KNOWN | set(ALIASES)
+    hits = sum(1 for c in cells if c in names or _ACCOUNT_PASS.match(c))
+    return hits >= 2
+
+
+def infer_header(cells: list[str]) -> tuple[str, ...] | None:
+    """Doan dinh dang tu DONG DU LIEU dau tien khi file khong co tieu de."""
+    if len(cells) >= 8 and "@" in cells[2] and (_GUID.match(cells[5]) or "@" in cells[6]):
+        return SELLER_OAUTH_HEADER
+    if len(cells) >= 4 and "@" in cells[2]:
+        return SELLER_HEADER
+    return None
+
 
 _TRUE = {"1", "true", "yes", "y", "co", "có"}
 
@@ -132,6 +213,8 @@ class Report:
     # So dong ma phan thua da duoc noi lai vao cot cuoi. Thuong la cookie TikTok co
     # chua dau `|` - bao ra de nguoi dung biet chuyen do da xay ra.
     rejoined_rows: int = 0
+    # File khong co dong tieu de: dinh dang da doan (de nguoi dung thay minh duoc hieu dung).
+    inferred_header: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -180,13 +263,27 @@ def parse(
     # file bi bao la thieu cot bat buoc - loi kho hieu nhat co the doi vao mat nguoi
     # dung, vi nhin bang mat thi file hoan toan dung.
     delimiter = sniff_delimiter(text)
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")), delimiter=delimiter)
+    clean = text.lstrip("\ufeff")
+    first_line = next((ln for ln in clean.splitlines() if ln.strip()), "")
+    first_cells = [c.strip() for c in first_line.split(delimiter)]
+    inferred = None
+    if first_line and not looks_like_header([c.lower() for c in first_cells]):
+        inferred = infer_header(first_cells)
+    if inferred is not None:
+        # Khong co dong tieu de: dong dau da la du lieu. Dung dinh dang doan duoc.
+        reader = csv.DictReader(io.StringIO(clean), fieldnames=list(inferred), delimiter=delimiter)
+        report.inferred_header = delimiter.join(inferred)
+        first_data_line = 1
+    else:
+        reader = csv.DictReader(io.StringIO(clean), delimiter=delimiter)
+        first_data_line = 2
     if reader.fieldnames is None:
         report.problems.append(Problem(0, "", "The file is empty."))
         return report
 
     raw_headers = [(h or "").strip().lower() for h in reader.fieldnames]
-    headers = [ALIASES.get(h, h) for h in raw_headers]
+    headers = resolve_headers(raw_headers, default_platform)
+    header_map = dict(zip(raw_headers, headers, strict=True))
     report.renamed_columns = {
         raw: new for raw, new in zip(raw_headers, headers, strict=True) if raw != new
     }
@@ -217,9 +314,9 @@ def parse(
     rejoined = 0
 
     seen: set[tuple[str, str]] = set()
-    for offset, raw in enumerate(reader, start=2):
+    for offset, raw in enumerate(reader, start=first_data_line):
         row = {
-            ALIASES.get((k or "").strip().lower(), (k or "").strip().lower()): (v or "").strip()
+            header_map.get((k or "").strip().lower(), (k or "").strip().lower()): (v or "").strip()
             for k, v in raw.items()
             if k is not None
         }
@@ -327,7 +424,14 @@ def parse(
     report.rejoined_rows = rejoined
 
     if not report.rows and not report.problems:
-        report.problems.append(Problem(1, "", "The file has a header but no rows."))
+        report.problems.append(
+            Problem(
+                1,
+                "",
+                "Mới có dòng tiêu đề, chưa có dòng tài khoản nào (the file has a header but no "
+                f"rows). Các cột được hiểu là: {delimiter.join(h for h in headers if h)}",
+            )
+        )
 
     return report
 

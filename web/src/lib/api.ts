@@ -167,6 +167,7 @@ export type ImportCheck = {
   rejoined_rows: number;
   unknown_columns: string[];
   renamed_columns: Record<string, string>;
+  inferred_header: string | null;
   rows: {
     line: number;
     platform: string;

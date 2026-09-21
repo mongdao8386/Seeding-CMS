@@ -114,8 +114,10 @@ async def _cleanup_content() -> None:
 
     async with SessionLocal() as s:
         ids = (
-            await s.execute(select(ContentItem.id).where(ContentItem.title_template == "thu"))
-        ).scalars().all()
+            (await s.execute(select(ContentItem.id).where(ContentItem.title_template == "thu")))
+            .scalars()
+            .all()
+        )
         await s.execute(delete(Campaign).where(Campaign.content_item_id.in_(ids)))
         await s.execute(delete(ContentItem).where(ContentItem.id.in_(ids)))
         await s.commit()

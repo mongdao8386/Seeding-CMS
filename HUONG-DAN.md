@@ -30,9 +30,15 @@ Màn hình **Tài khoản** → **Dán tài khoản**: dán đúng file người
 
 ```
 username|password|hotmail|pass_hotmail|cookie
+username|passtiktok|email|password|refresh_token|client_id|mailKP|cookie
 ```
 
 (có hay không có dòng tiêu đề đều được; cookie TikTok có dấu `|` bên trong cũng được).
+Ở định dạng thứ hai, `passtiktok` là mật khẩu acc, còn `password` đứng sau `email` là
+**mật khẩu email**; `refresh_token` + `client_id` là khoá OAuth2 của hộp thư Hotmail,
+`mailKP` là mail khôi phục của hộp thư đó. Tất cả vào két và hiện ở thẻ "Thông tin đăng
+nhập" của acc. Ô dán luôn nói lại các cột được hiểu thế nào; cột lạ được báo chứ không
+lặng lẽ bỏ.
 Nó kiểm trước — bao nhiêu dòng dùng được, bao nhiêu có phiên — rồi mới nhập. Dòng có
 cookie thì tạo luôn profile đã đăng nhập.
 

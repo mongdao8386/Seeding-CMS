@@ -381,3 +381,74 @@ def test_overflow_on_a_file_whose_last_column_is_not_cookie_is_an_error():
     )
     assert not report.ok
     assert "more field" in report.problems[0].detail
+
+
+# ------------------------------------------------ dinh dang co OAuth2 cua hom thu (21/09/2026)
+
+GUID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
+SELLER_OAUTH = (
+    "username|passtiktok|email|password|refresh_token|client_id|mailKP|cookie\n"
+    f"user_a|TikPass1|a@hotmail.com|MailPass1|M.C5_BAY.token-a|{GUID}|kp_a@getnada.com|"
+    "sessionid=abc123; ttwid=1%7Cxyz\n"
+    f"user_b|TikPass2|b@outlook.com|MailPass2|M.C5_BAY.token-b|{GUID}|kp_b@getnada.com|"
+    "sessionid=def456; ttwid=1|with|pipes\n"
+)
+
+
+def test_oauth_seller_format_maps_every_column_to_the_right_secret():
+    """`password` o day la mat khau EMAIL; mat khau TikTok nam o `passtiktok`. Nham hai cai
+    la luc can dang nhap lai nguoi van hanh go mat khau email vao TikTok."""
+    report = bulk.parse(SELLER_OAUTH, default_platform=Platform.TIKTOK)
+    assert report.ok, [p.detail for p in report.problems]
+    assert report.unknown_columns == []
+    assert len(report.rows) == 2 and report.with_cookies == 2
+    a = report.rows[0]
+    assert a.handle == "user_a"
+    assert a.secrets == {
+        "username": "user_a",
+        "password": "TikPass1",
+        "recovery_email": "a@hotmail.com",
+        "recovery_password": "MailPass1",
+        "mail_refresh_token": "M.C5_BAY.token-a",
+        "mail_client_id": GUID,
+        "backup_email": "kp_a@getnada.com",
+    }
+    assert report.renamed_columns["passtiktok"] == "password"
+    assert report.renamed_columns["password"] == "recovery_password"
+    assert report.renamed_columns["client_id"] == "mail_client_id"
+    assert report.rejoined_rows == 1, "cookie co dau | o dong hai duoc noi lai"
+
+
+def test_oauth_seller_format_without_a_header_row_is_inferred():
+    body = SELLER_OAUTH.split("\n", 1)[1]
+    report = bulk.parse(body, default_platform=Platform.TIKTOK)
+    assert report.ok, [p.detail for p in report.problems]
+    assert report.inferred_header and report.inferred_header.startswith("username|passtiktok")
+    assert [r.handle for r in report.rows] == ["user_a", "user_b"]
+    assert report.rows[0].line == 1
+    assert report.rows[1].secrets["password"] == "TikPass2"
+    assert report.rows[1].secrets["recovery_password"] == "MailPass2"
+
+
+def test_classic_seller_format_without_a_header_row_is_inferred():
+    body = SELLER.split("\n", 1)[1]
+    report = bulk.parse(body, default_platform=Platform.FACEBOOK)
+    assert report.ok, [p.detail for p in report.problems]
+    assert report.inferred_header == "username|password|hotmail|pass_hotmail|cookie"
+    assert len(report.rows) == 2 and report.rows[0].secrets["password"]
+
+
+def test_reddit_client_id_is_still_the_app_client_id():
+    text = "platform|handle|client_id|client_secret|username|password\nreddit|r1|cid|sec|r1|pw\n"
+    row = bulk.parse(text).rows[0]
+    assert row.secrets["client_id"] == "cid" and "mail_client_id" not in row.secrets
+
+
+def test_header_only_paste_says_how_the_columns_were_understood():
+    report = bulk.parse(
+        "username|passtiktok|email|password|refresh_token|client_id|mailKP|cookie",
+        default_platform=Platform.TIKTOK,
+    )
+    assert not report.rows
+    detail = report.problems[0].detail
+    assert "mail_refresh_token" in detail and "backup_email" in detail
