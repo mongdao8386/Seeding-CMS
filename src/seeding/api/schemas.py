@@ -80,6 +80,25 @@ class AccountPatch(BaseModel):
     role: AccountRole | None = None
 
 
+class LoginQueueIn(BaseModel):
+    """Xep hang dang nhap tu dong: theo danh sach id, hoac `all_missing` = moi acc chua co phien
+    song ma da luu mat khau."""
+
+    ids: list[uuid.UUID] = []
+    all_missing: bool = False
+    spacing_minutes: int | None = None
+
+
+class LoginQueueOut(BaseModel):
+    queued: int
+    already_queued: int
+    no_password: int
+    no_profile: int
+    first_at: datetime | None = None
+    last_at: datetime | None = None
+    detail: str
+
+
 class MailCodeOut(BaseModel):
     """Ma xac minh vua lay tu hom thu cua acc. Khong bao gio kem token."""
 

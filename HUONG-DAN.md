@@ -71,7 +71,30 @@ Trang một acc có nút **Xoá** (xoá cả profile, cookie, thông tin đăng 
 tổng hiện tại). Acc đã đăng bài được giữ lại và hỏi thêm một lần vì xoá là mất lịch sử
 đăng. Proxy không bị xoá theo; proxy còn acc nào gắn thì không xoá được. Xoá acc là trả lại một chỗ trên proxy đó.
 
-## 2c. Đăng nhập lại một acc (phiên chết, captcha)
+## 2c. Đăng nhập (acc mua về không có cookie, phiên chết, captcha)
+
+### Cách nhanh: để hệ thống tự đăng nhập hàng loạt
+
+Acc nhập về chỉ có `username|mật khẩu|email|…` mà **không có cookie** thì không cần mở
+từng cái. Trang **Tài khoản** → nút **Tự đăng nhập acc chưa có phiên (n)**. Mỗi acc thành
+một việc "Đăng nhập" trong hàng đợi, chạy **lần lượt, cách nhau ~4 phút**
+(`LOGIN_SPACING_MINUTES`), và **chỉ một cửa sổ đăng nhập mở một lúc**:
+
+- Cửa sổ trình duyệt của profile hiện lên (đúng fingerprint + proxy của acc), máy tự gõ tên
+  đăng nhập và mật khẩu đã lưu rồi bấm Đăng nhập.
+- TikTok đòi **mã gửi về email**: máy tự đọc hộp thư bằng `refresh_token` + `client_id`
+  (định dạng acc có OAuth2) và điền mã.
+- Gặp **captcha**: máy **không giải**. Cửa sổ đứng yên chờ bạn tối đa 6 phút; bạn giải xong
+  là luồng chạy tiếp. Không ai giải thì việc đó hẹn lại 45 phút sau. Vì vậy hãy **ngồi gần
+  máy** khi các lượt đăng nhập chạy. 80 acc × ~4 phút ≈ 5–6 tiếng, có thể chia nhiều buổi.
+- Xong mỗi acc: cookie được lưu, hệ thống hỏi TikTok xem phiên có sống thật không, và thẻ
+  "cần người" của acc đó (nếu có) tự đóng. Sai mật khẩu / acc bị khoá thì dừng hẳn, ghi rõ
+  lý do ở **Nuôi → Lịch sử**; "thử quá nhiều lần" thì tự hẹn lại.
+
+Một acc riêng lẻ: trang của acc → nút **Tự đăng nhập**. Acc xây kênh chưa có proxy thì bị từ
+chối (không bao giờ đăng nhập bằng IP máy chủ); acc tương tác (clone) được phép không proxy.
+
+### Cách tay: một acc, khi cách trên không qua
 
 Khi hàng chờ người báo "phiên chết" hay "captcha":
 

@@ -43,6 +43,20 @@ export default function AccountPage() {
     }
   }
 
+  async function queueLogin() {
+    if (!a) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ detail: string }>("/accounts/login-queue", { ids: [a.id], spacing_minutes: 1 });
+      setOpened(`${r.detail}. Cửa sổ trình duyệt sẽ tự mở trong khoảng một phút; chỉ cần giải captcha nếu nó hiện.`);
+      timeline.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     if (!a) return;
     if (!confirm(`Xoá tài khoản ${a.handle}? Profile, cookie, thông tin đăng nhập, lịch nuôi và lịch đăng của nó mất hết. Không hoàn tác được.`)) return;
@@ -129,6 +143,11 @@ export default function AccountPage() {
               <button className="btn btn-primary" disabled={busy || !a.profile_id || (!a.proxy_label && a.role !== "booster")} onClick={open}>
                 {busy ? "Đang mở…" : "Mở trình duyệt"}
               </button>
+              {!a.session_alive && a.profile_id && (
+                <button className="btn" disabled={busy} onClick={queueLogin} title="Worker mở trình duyệt, tự gõ tài khoản + mật khẩu đã lưu, tự lấy mã từ email; captcha thì chờ bạn giải">
+                  Tự đăng nhập
+                </button>
+              )}
               <button className="btn btn-ghost text-bad-text" disabled={busy} onClick={remove}>
                 Xoá
               </button>
@@ -209,6 +228,7 @@ const KIND_VI: Record<TimelineItem["kind"], string> = {
   edit: "Sửa bài",
   reply: "Trả lời bình luận",
   dm: "Nhắn tin",
+  login: "Đăng nhập",
 };
 
 function statusVi(s: TimelineItem["status"]): { text: string; cls: string } {

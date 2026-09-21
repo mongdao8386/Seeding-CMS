@@ -121,6 +121,16 @@ export type AccountDetail = AccountRow & {
 
 export type ProxyAttachOut = { attached: number; still_missing: number; free_slots: number; capacity: number };
 
+export type LoginQueueOut = {
+  queued: number;
+  already_queued: number;
+  no_password: number;
+  no_profile: number;
+  first_at: string | null;
+  last_at: string | null;
+  detail: string;
+};
+
 export type BulkDeleteOut = { deleted: number; skipped: string[]; detail: string };
 
 export type MailCode = {
@@ -281,7 +291,7 @@ export type SlotMeta = { timezone: string; weekdays: string[] };
 
 export type TimelineItem = {
   at: string;
-  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity" | "delete" | "edit" | "reply" | "dm";
+  kind: "post" | "like" | "follow" | "comment" | "repost" | "browse" | "session" | "identity" | "delete" | "edit" | "reply" | "dm" | "login";
   status: JobStatus | null;
   title: string;
   detail: string | null;

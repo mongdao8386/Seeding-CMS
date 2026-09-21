@@ -73,6 +73,7 @@ HealthCheck = Callable[[Profile], Awaitable[tuple[bool, str]]]
 
 _REGISTRY: dict[Platform, Adapter] = {}
 _IDENTITY: dict[Platform, InteractRunner] = {}
+_LOGIN: dict[Platform, InteractRunner] = {}
 _MANAGE: dict[Platform, InteractRunner] = {}
 # (profile, account) -> Channel (mo bang `async with`)
 _CHATBOT: dict[Platform, Callable[..., object]] = {}
@@ -129,6 +130,15 @@ def get_identity(platform: Platform) -> InteractRunner | None:
     return _IDENTITY.get(platform)
 
 
+def register_login(platform: Platform, runner: InteractRunner) -> None:
+    """Runner dang nhap trong trinh duyet bang thong tin da luu (job kind LOGIN)."""
+    _LOGIN[platform] = runner
+
+
+def get_login(platform: Platform) -> InteractRunner | None:
+    return _LOGIN.get(platform)
+
+
 def register_manage(platform: Platform, runner: InteractRunner) -> None:
     """Xoa bai da dang / sua chu thich. Cung hop dong voi runner nuoi."""
     _MANAGE[platform] = runner
@@ -174,6 +184,7 @@ _MODULES = (
     "seeding.platforms.tiktok.interact_browser",
     "seeding.platforms.tiktok.warm",
     "seeding.platforms.tiktok.health",
+    "seeding.platforms.tiktok.login_browser",
     "seeding.platforms.tiktok.manage",
     "seeding.platforms.instagram.publish",
     "seeding.platforms.instagram.interact",

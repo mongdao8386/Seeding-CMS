@@ -20,6 +20,8 @@ from seeding.api.schemas import (
     BulkDeleteOut,
     DeleteOut,
     ImportResult,
+    LoginQueueIn,
+    LoginQueueOut,
     MailCodeOut,
     Page,
     SecretsIn,
@@ -328,6 +330,117 @@ async def _erase(s: AsyncSession, account: Account) -> None:
     nut Xoa "khong hoat dong" (08/09/2026)."""
     await s.execute(delete(PostJob).where(PostJob.account_id == account.id))
     await s.delete(account)
+
+
+@router.post("/login-queue", response_model=LoginQueueOut)
+async def queue_logins(body: LoginQueueIn, s: AsyncSession = Depends(get_session)) -> LoginQueueOut:
+    """Xep hang DANG NHAP TU DONG cho acc chua co phien song: worker mo trinh duyet cua profile,
+    go ten + mat khau da luu, lay ma tu email, va dung cho nguoi khi co captcha. Tung acc mot,
+    cach nhau LOGIN_SPACING_MINUTES, de khong thanh mot loat dang nhap don dap."""
+    import random
+    from datetime import timedelta
+
+    from seeding.config import get_settings
+    from seeding.domain.models import ActivityJob, ActivityKind, JobStatus
+
+    stmt = (
+        select(Account)
+        .options(selectinload(Account.profile))
+        .where(Account.status.notin_([AccountStatus.DEAD, AccountStatus.SUSPENDED]))
+        .order_by(Account.created_at)
+    )
+    if body.ids:
+        stmt = stmt.where(Account.id.in_(body.ids))
+    elif not body.all_missing:
+        return LoginQueueOut(
+            queued=0,
+            already_queued=0,
+            no_password=0,
+            no_profile=0,
+            detail="Chưa chọn tài khoản nào",
+        )
+    accounts = list((await s.execute(stmt)).unique().scalars().all())
+
+    pending = set(
+        (
+            await s.execute(
+                select(ActivityJob.account_id).where(
+                    ActivityJob.kind == ActivityKind.LOGIN,
+                    ActivityJob.status.in_([JobStatus.SCHEDULED, JobStatus.RUNNING]),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    spacing = max(1, body.spacing_minutes or get_settings().login_spacing_minutes)
+    when = datetime.now(UTC) + timedelta(minutes=1)
+    queued = already = no_password = no_profile = 0
+    first_at = last_at = None
+    eligible: list[Account] = []
+    for account in accounts:
+        profile = account.profile
+        if (
+            body.all_missing
+            and profile is not None
+            and profile.cookies_enc
+            and profile.session_alive
+        ):
+            continue  # da co phien song: khong dung toi
+        if account.id in pending:
+            already += 1
+            continue
+        if profile is None:
+            no_profile += 1
+            continue
+        secrets = account.get_secrets() or {}
+        if not secrets.get("password") or not (
+            secrets.get("username") or secrets.get("recovery_email")
+        ):
+            no_password += 1
+            continue
+        eligible.append(account)
+
+    # Xen ke theo proxy: 5 acc chung mot proxy ma dang nhap lien tiep la 5 lan dang nhap tu MOT
+    # IP trong 20 phut - dung kieu TikTok tra "Maximum number of attempts reached".
+    by_proxy: dict = {}
+    for account in eligible:
+        by_proxy.setdefault(account.profile.proxy_id or account.id, []).append(account)
+    lanes = list(by_proxy.values())
+    ordered: list[Account] = []
+    while lanes:
+        ordered += [lane.pop(0) for lane in lanes]
+        lanes = [lane for lane in lanes if lane]
+
+    for account in ordered:
+        s.add(
+            ActivityJob(
+                account_id=account.id,
+                kind=ActivityKind.LOGIN,
+                scheduled_at=when,
+                duration_seconds=0,
+                target_url="login:saved-credentials",
+            )
+        )
+        first_at = first_at or when
+        last_at = when
+        queued += 1
+        when += timedelta(minutes=spacing * random.uniform(0.7, 1.3))
+    await s.commit()
+    detail = f"Đã xếp {queued} lượt đăng nhập, mỗi lượt cách nhau khoảng {spacing} phút"
+    if no_password:
+        detail += f"; {no_password} acc chưa lưu mật khẩu"
+    if already:
+        detail += f"; {already} acc đã có lượt đang chờ"
+    return LoginQueueOut(
+        queued=queued,
+        already_queued=already,
+        no_password=no_password,
+        no_profile=no_profile,
+        first_at=first_at,
+        last_at=last_at,
+        detail=detail,
+    )
 
 
 @router.post("/bulk-delete", response_model=BulkDeleteOut)

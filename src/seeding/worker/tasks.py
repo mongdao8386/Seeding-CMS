@@ -314,7 +314,7 @@ async def clear_stale_locks(redis) -> int:
     if redis is None:
         return 0
     removed = 0
-    for pattern in ("lock:account:*", "lock:proxy:*"):
+    for pattern in ("lock:account:*", "lock:proxy:*", "lock:login-window"):
         async for key in redis.scan_iter(match=pattern):
             await redis.delete(key)
             removed += 1
@@ -356,7 +356,12 @@ async def activity_tick(ctx: dict) -> int:
                 .where(
                     ActivityJob.status == JobStatus.SCHEDULED,
                     ActivityJob.scheduled_at <= now,
-                    Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE]),
+                    # Acc dang cho nguoi (phien chet) van duoc chay job DANG NHAP LAI.
+                    Account.status.in_([AccountStatus.WARMING, AccountStatus.ACTIVE])
+                    | (
+                        (ActivityJob.kind == ActivityKind.LOGIN)
+                        & (Account.status == AccountStatus.NEEDS_HUMAN)
+                    ),
                 )
                 .order_by(ActivityJob.scheduled_at)
                 .limit(50)
@@ -444,6 +449,20 @@ async def _requeue_stuck(job_ids: list[str], minutes: int = 10) -> None:
         await fresh.commit()
 
 
+def _login_verdict(account, profile):
+    """Job dang nhap sinh ra CHO acc chua co phien, nen khong dung readiness.check (no chan
+    dung nhung acc do). Chi can: co profile, acc chua chet, va acc xay kenh thi co proxy."""
+    from seeding.domain.models import AccountRole
+
+    if profile is None:
+        return readiness.Readiness(False, "acc chưa có profile")
+    if account.status in (AccountStatus.DEAD, AccountStatus.SUSPENDED):
+        return readiness.Readiness(False, f"acc đang ở trạng thái {account.status.value}")
+    if profile.proxy_id is None and account.role is not AccountRole.BOOSTER:
+        return readiness.Readiness(False, "chưa có proxy (no proxy)")
+    return readiness.Readiness(True)
+
+
 def _proxy_lock_key(profile) -> str | None:
     proxy_id = getattr(profile, "proxy_id", None)
     return f"lock:proxy:{proxy_id}" if proxy_id is not None else None
@@ -491,6 +510,14 @@ async def _apply_result(session, job, result) -> None:
     if result.ok:
         job.status = JobStatus.SUCCEEDED
         job.last_error = None
+        if job.kind is ActivityKind.LOGIN:
+            from seeding.ops import takeover
+
+            open_request = await takeover.open_for_account(session, job.account_id)
+            if open_request is not None:
+                await takeover.resolve(
+                    session, open_request, by="auto-login", note="đăng nhập lại tự động thành công"
+                )
     elif result.checkpoint and not result.checkpoint.is_terminal:
         job.status = JobStatus.NEEDS_HUMAN
         job.last_error = result.detail
@@ -531,7 +558,11 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
         job.attempt_count += 1
         profile = await profiles_mod.get_for_account(session, job.account_id)
 
-        verdict = readiness.check(job.account, profile)
+        verdict = (
+            _login_verdict(job.account, profile)
+            if job.kind is ActivityKind.LOGIN
+            else readiness.check(job.account, profile)
+        )
         if not verdict.ready:
             job.status = JobStatus.SKIPPED
             job.last_error = verdict.reason
@@ -580,11 +611,25 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
                 log.info("activity.no_browser_slot", job=job_id, handle=job.account.handle)
                 return "deferred"
 
+        # Dang nhap can nguoi ngoi canh (captcha): chi mot cua so dang nhap mo mot luc.
+        login_key = "lock:login-window" if job.kind is ActivityKind.LOGIN else None
+        if login_key is not None and redis is not None:
+            if not await redis.set(login_key, job_id, nx=True, ex=ACCOUNT_LOCK_TTL):
+                if slot is not None:
+                    slot.release()
+                await _release_lock(redis, lock_key, job_id)
+                await _release_lock(redis, proxy_key, job_id)
+                _defer(job, random.randint(2, 4), "đang có một cửa sổ đăng nhập khác mở")
+                await session.commit()
+                return "deferred"
+
         batch = [job]
         results: dict = {}
         try:
             if job.kind is ActivityKind.IDENTITY:
                 runner = adapters.get_identity(platform)
+            elif job.kind is ActivityKind.LOGIN:
+                runner = adapters.get_login(platform)
             elif job.kind in (ActivityKind.DELETE, ActivityKind.EDIT):
                 runner = adapters.get_manage(platform)
             else:
@@ -618,6 +663,7 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
                 slot.release()
             await _release_lock(redis, lock_key, job_id)
             await _release_lock(redis, proxy_key, job_id)
+            await _release_lock(redis, login_key, job_id)
 
         for item in batch:
             result = results.get(item.id)

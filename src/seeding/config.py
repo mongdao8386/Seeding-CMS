@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     # truoc. Acc moi vao proxy dang it nguoi nhat; hai acc chung proxy khong bao gio chay
     # cung luc (worker khoa theo proxy).
     accounts_per_proxy: int = 5
+    # Khoang cach giua hai luot dang nhap tu dong (phut, cong tru ngau nhien ~30%). Mot loat
+    # dang nhap don dap tu mot may la dau vet ro nhat - dung ha xuong duoi 2.
+    login_spacing_minutes: int = 4
     headless_jobs: bool = True
     # So trinh duyet mo song song trong MOT tien trinh worker (~400-600MB RAM + 1 loi CPU
     # moi cai). Job trinh duyet khong lay duoc cho trong 30 giay thi hen lai vai phut.

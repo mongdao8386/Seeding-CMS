@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api, ApiError, qs, type AccountRole, type AccountRow,
   type BulkDeleteOut,
+  type LoginQueueOut,
   type ProxyAttachOut, type Page, type Platform, type Proxy } from "@/lib/api";
 import { ImportAccounts, ImportProxies } from "@/components/import-panel";
 import {
@@ -196,6 +197,25 @@ function AccountList({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
+  async function queueLogins() {
+    const chosen = selected.size > 0;
+    const what = chosen ? `${selected.size} tài khoản đã chọn` : "mọi tài khoản chưa có phiên đăng nhập";
+    if (!confirm(`Tự đăng nhập ${what}?\n\nWorker mở từng cửa sổ trình duyệt (mỗi lượt cách nhau vài phút), tự gõ tài khoản + mật khẩu đã lưu và tự lấy mã từ email. Gặp captcha thì cửa sổ dừng chờ bạn giải, nên hãy ngồi cạnh máy.`)) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const body = chosen ? { ids: [...selected] } : { all_missing: true };
+      const r = await api.post<LoginQueueOut>("/accounts/login-queue", body);
+      setNote(`${r.detail}.`);
+      setSelected(new Set());
+      onChange();
+    } catch (e) {
+      setNote(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function bulkDelete(all: boolean) {
     const n = all ? page?.total ?? 0 : selected.size;
     if (!n) return;
@@ -254,6 +274,9 @@ function AccountList({
           />
           chọn cả trang
         </label>
+        <button className="btn text-xs" disabled={busy} onClick={queueLogins} title="Dùng tài khoản + mật khẩu đã lưu, mã lấy từ email; captcha chờ bạn giải">
+          Tự đăng nhập {selected.size ? `(${selected.size})` : "acc chưa có phiên"}
+        </button>
         <button className="btn btn-ghost text-xs text-bad-text" disabled={busy || selected.size === 0} onClick={() => bulkDelete(false)}>
           Xoá đã chọn{selected.size ? ` (${selected.size})` : ""}
         </button>
