@@ -280,6 +280,9 @@ class _Redis:
         self.keys[key] = value
         return True
 
+    async def get(self, key):
+        return self.keys.get(key)
+
     async def delete(self, key):
         self.keys.pop(key, None)
 

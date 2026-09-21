@@ -190,15 +190,17 @@ async def import_accounts(
     if not report.rows:
         raise HTTPException(400, "Không có dòng nào dùng được.")
 
-    pool = await proxypool.build_pool(s) if attach_proxies else None
-
     workspace, persona = await ensure_defaults(s)
-    try:
-        created, warnings = await bulk.apply(
-            s, workspace.id, report.rows, default_persona_id=persona.id, pool=pool
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    # Doc bang tai va gan proxy trong cung mot khoa voi attach_missing: khong hai luot cung lay
+    # mot cho.
+    async with proxypool.assign_lock:
+        pool = await proxypool.build_pool(s) if attach_proxies else None
+        try:
+            created, warnings = await bulk.apply(
+                s, workspace.id, report.rows, default_persona_id=persona.id, pool=pool
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     if pool is not None and pool.misses:
         warnings.append(

@@ -17,6 +17,7 @@ from seeding.config import get_settings
 from seeding.worker.tasks import (
     activity_tick,
     chatbot_tick,
+    clear_stale_locks,
     health_sweep,
     plan_activity,
     prune_history,
@@ -91,4 +92,5 @@ class WorkerSettings:
     async def on_startup(ctx: dict) -> None:
         configure_logging()
         orphans = await reclaim_orphans()
-        log.info("worker.started", reclaimed=orphans)
+        locks = await clear_stale_locks(ctx.get("redis"))
+        log.info("worker.started", reclaimed=orphans, stale_locks=locks)

@@ -114,12 +114,20 @@ def test_build_jobs_respects_cap_history_and_ordering():
     assert reposts[0].target_url != comments[0].target_url
 
 
-def test_day_zero_booster_only_likes_a_little():
+def test_day_zero_booster_rests_like_a_channel_account():
+    """Ngay dau clone NGHI (WARM_WATCH_ONLY_DAYS): 21/09/2026 nhap 100 clone, phut dau tien
+    da co 29 lenh follow - mot loat follow tu phien vua nhap la thu de bi soi nhat."""
     b = Account(id=uuid.uuid4(), handle="b", role=AccountRole.BOOSTER, warmup_started_at=None)
-    likes, _follows, comments, reposts = boost.budget_for(
+    assert boost.budget_for(b, dt.datetime.now(dt.UTC), random.Random(1)) == (0, 0, 0, 0)
+
+
+def test_day_one_booster_starts_acting():
+    started = dt.datetime.now(dt.UTC) - dt.timedelta(days=1, minutes=5)
+    b = Account(id=uuid.uuid4(), handle="b", role=AccountRole.BOOSTER, warmup_started_at=started)
+    likes, _follows, _comments, reposts = boost.budget_for(
         b, dt.datetime.now(dt.UTC), random.Random(1)
     )
-    assert 1 <= likes <= 2 and comments == 0 and reposts == 0
+    assert likes >= 1 and reposts == 0
 
 
 # ------------------------------------------------------------------ DB that

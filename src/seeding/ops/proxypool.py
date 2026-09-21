@@ -14,6 +14,7 @@ Acc tuong tac cheo (booster) khong can proxy nen khong chiem cho.
 
 from __future__ import annotations
 
+import asyncio
 import heapq
 import uuid
 
@@ -22,9 +23,21 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.config import get_settings
-from seeding.domain.models import Account, AccountRole, Profile, Proxy, ProxyStatus
+from seeding.domain.models import (
+    Account,
+    AccountRole,
+    AccountStatus,
+    Profile,
+    Proxy,
+    ProxyStatus,
+)
 
 log = structlog.get_logger(__name__)
+
+# Gan proxy la viec TUAN TU: hai lan nhap (hoac nhap + "gan cho acc con thieu") chay cung luc
+# cung doc mot bang tai roi cung lay mot cho -> proxy vuot suc chua. API la mot tien trinh,
+# worker khong bao gio gan proxy, nen mot asyncio.Lock la du.
+assign_lock = asyncio.Lock()
 
 
 def capacity() -> int:
@@ -93,6 +106,11 @@ async def attach_missing(session: AsyncSession) -> dict:
     Chay sau khi dan them proxy, hoac bam nut "Gan proxy cho acc con thieu". Acc da co
     proxy khong bi dung toi: mot acc o yen mot proxy.
     """
+    async with assign_lock:
+        return await _attach_missing(session)
+
+
+async def _attach_missing(session: AsyncSession) -> dict:
     from seeding.domain import profiles as profiles_mod
 
     pool = await build_pool(session)
@@ -103,7 +121,11 @@ async def attach_missing(session: AsyncSession) -> dict:
             await session.execute(
                 select(Profile)
                 .join(Account, Account.id == Profile.account_id)
-                .where(Profile.proxy_id.is_(None), Account.role != AccountRole.BOOSTER)
+                .where(
+                    Profile.proxy_id.is_(None),
+                    Account.role != AccountRole.BOOSTER,
+                    Account.status != AccountStatus.DEAD,
+                )
                 .order_by(Profile.created_at)
             )
         )
@@ -125,7 +147,11 @@ async def attach_missing(session: AsyncSession) -> dict:
             await session.execute(
                 select(Account)
                 .outerjoin(Profile, Profile.account_id == Account.id)
-                .where(Profile.id.is_(None), Account.role != AccountRole.BOOSTER)
+                .where(
+                    Profile.id.is_(None),
+                    Account.role != AccountRole.BOOSTER,
+                    Account.status != AccountStatus.DEAD,
+                )
                 .order_by(Account.created_at)
             )
         )

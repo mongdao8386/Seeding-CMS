@@ -145,6 +145,10 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
             await session.execute(select(PostJob).where(PostJob.id == uuid.UUID(job_id)))
         ).scalar_one()
 
+        if job.status is not JobStatus.RUNNING:
+            log.info("job.stale_delivery", job=job_id, status=job.status.value)
+            return "stale"
+
         attempt = Attempt(job_id=job.id)
         session.add(attempt)
         job.attempt_count += 1
@@ -204,8 +208,7 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
         try:
             result = await adapter.publish(job.account, job.variant, job.target, profile=profile)
         finally:
-            if redis is not None and proxy_key is not None:
-                await redis.delete(proxy_key)
+            await _release_lock(redis, proxy_key, job_id)
 
         attempt.finished_at = datetime.now(UTC)
         attempt.ok = result.ok
@@ -304,6 +307,20 @@ async def plan_activity(ctx: dict) -> int:
     return created
 
 
+async def clear_stale_locks(redis) -> int:
+    """Khoa acc / proxy con sot sau khi worker bi tat ngang (Stop.cmd, mat dien): khong ai con
+    giu chung, ma TTL la 30 phut - ca nhom 5 acc chung proxy dung im ngan ay. Chi goi luc worker
+    KHOI DONG (mot worker); nhieu worker thi bat cung luc."""
+    if redis is None:
+        return 0
+    removed = 0
+    for pattern in ("lock:account:*", "lock:proxy:*"):
+        async for key in redis.scan_iter(match=pattern):
+            await redis.delete(key)
+            removed += 1
+    return removed
+
+
 async def reclaim_orphans() -> int:
     """Job dang RUNNING luc worker khoi dong la job mo coi: chi co mot worker, va no vua
     chet/khoi dong lai giua chung (08/09/2026: job HA1 ket RUNNING mai sau khi restart).
@@ -365,7 +382,7 @@ ACTIVITY_MAX_ATTEMPTS = 3
 # Mot acc chi mo MOT trinh duyet mot luc. Hai job cua cung acc chay song song (job thu lai
 # sau 45 phut trung gio job ke tiep) la hai "thiet bi" cung dang nhap tu mot proxy - dau
 # vet khong nguoi that nao de lai. TTL bang job_timeout de khoa khong bao gio ket mai.
-ACCOUNT_LOCK_TTL = 1500
+ACCOUNT_LOCK_TTL = 1800
 # Gom job cung acc: khi mot job trinh duyet chay, cac job MO THANG LINK khac cua cung acc
 # toi han trong khoang nay di chung mot trinh duyet (toi da BATCH_MAX). Clone 2-5 luot
 # thich/ngay -> mot lan mo. Phien luot (BROWSE_FEED) di rieng.
@@ -389,6 +406,42 @@ def browser_slots() -> asyncio.Semaphore:
     if _browser_slots is None:
         _browser_slots = asyncio.Semaphore(max(1, get_settings().browser_concurrency))
     return _browser_slots
+
+
+async def _release_lock(redis, key: str | None, owner: str) -> None:
+    """Xoa khoa CHI KHI no con la cua minh. Job qua gio co the da mat khoa vao tay job khac
+    (TTL het) - xoa mu la mo cua cho hai acc cung proxy chay cung luc. Khong bao gio nem."""
+    if redis is None or key is None:
+        return
+    try:
+        held = await redis.get(key)
+        if isinstance(held, bytes):
+            held = held.decode()
+        if held == owner:
+            await redis.delete(key)
+    except Exception as exc:
+        log.warning("lock.release_failed", key=key, error=type(exc).__name__)
+
+
+async def _requeue_stuck(job_ids: list[str], minutes: int = 10) -> None:
+    """Job bi huy giua chung (qua gio ARQ): tra ve hang doi bang mot phien DB MOI, vi phien
+    cu dang o giua mot lenh bi huy. Khong co buoc nay job nam o RUNNING toi lan khoi dong sau."""
+    from seeding.domain.models import ActivityJob
+
+    async with SessionLocal() as fresh:
+        await fresh.execute(
+            update(ActivityJob)
+            .where(
+                ActivityJob.id.in_([uuid.UUID(j) for j in job_ids]),
+                ActivityJob.status == JobStatus.RUNNING,
+            )
+            .values(
+                status=JobStatus.SCHEDULED,
+                scheduled_at=datetime.now(UTC) + timedelta(minutes=minutes),
+                last_error="job bị huỷ giữa chừng (quá giờ), hẹn lại",
+            )
+        )
+        await fresh.commit()
 
 
 def _proxy_lock_key(profile) -> str | None:
@@ -470,6 +523,11 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             .unique()
             .scalar_one()
         )
+        if job.status is not JobStatus.RUNNING:
+            # ARQ giao lai mot job cu sau khi worker bi tat ngang, trong khi reclaim_orphans da tra
+            # job ve hang doi va tick se (hoac da) xep no lai: chay o day la chay HAI lan.
+            log.info("activity.stale_delivery", job=job_id, status=job.status.value)
+            return "stale"
         job.attempt_count += 1
         profile = await profiles_mod.get_for_account(session, job.account_id)
 
@@ -503,7 +561,7 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
         proxy_key = _proxy_lock_key(profile)
         if redis is not None and proxy_key is not None:
             if not await redis.set(proxy_key, job_id, nx=True, ex=ACCOUNT_LOCK_TTL):
-                await redis.delete(lock_key)
+                await _release_lock(redis, lock_key, job_id)
                 _defer(job, random.randint(2, 5), "acc khác cùng proxy đang chạy, hẹn lại")
                 await session.commit()
                 log.info("activity.proxy_busy", job=job_id, handle=job.account.handle)
@@ -515,10 +573,8 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             try:
                 await asyncio.wait_for(slot.acquire(), timeout=BROWSER_WAIT_S)
             except TimeoutError:
-                if redis is not None:
-                    await redis.delete(lock_key)
-                    if proxy_key is not None:
-                        await redis.delete(proxy_key)
+                await _release_lock(redis, lock_key, job_id)
+                await _release_lock(redis, proxy_key, job_id)
                 _defer(job, random.randint(2, 6), "hết chỗ trình duyệt, hẹn lại")
                 await session.commit()
                 log.info("activity.no_browser_slot", job=job_id, handle=job.account.handle)
@@ -545,13 +601,23 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
                 results = await many(session, profile, batch)
             else:
                 results[job.id] = await runner(session, profile, job)
+        except asyncio.CancelledError:
+            # Qua job_timeout: ARQ huy task. Tra ca lo ve hang doi roi moi de viec huy di tiep.
+            await asyncio.shield(_requeue_stuck([str(item.id) for item in batch]))
+            raise
+        except Exception as exc:
+            # Loi thoat khoi runner (mat DB giua chung, loi la trong thu vien): coi nhu that bai
+            # thu lai duoc cho CA LO, thay vi de chung ket o RUNNING.
+            log.warning("activity.runner_crashed", job=job_id, error=f"{type(exc).__name__}: {exc}")
+            crashed = adapters.InteractResult(
+                False, f"lỗi khi chạy: {type(exc).__name__}", retryable=True
+            )
+            results = {item.id: crashed for item in batch}
         finally:
             if slot is not None:
                 slot.release()
-            if redis is not None:
-                await redis.delete(lock_key)
-                if proxy_key is not None:
-                    await redis.delete(proxy_key)
+            await _release_lock(redis, lock_key, job_id)
+            await _release_lock(redis, proxy_key, job_id)
 
         for item in batch:
             result = results.get(item.id)

@@ -171,6 +171,11 @@ def budget_for(booster: Account, now: datetime, rng: random.Random) -> tuple[int
     follows = rng.randint(*FOLLOWS_PER_DAY)
     comments = rng.randint(*COMMENTS_PER_DAY)
     reposts = rng.randint(*REPOSTS_PER_DAY) if day >= 2 else 0
+    # Nhung ngay dau clone cung NGHI nhu acc xay kenh (WARM_WATCH_ONLY_DAYS): mot loat follow
+    # tu phien vua nhap trong vai gio dau la thu de bi soi nhat (21/09/2026: 29 lenh follow
+    # duoc lap ngay phut dau tien sau khi nhap 100 clone).
+    if day < get_settings().warm_watch_only_days:
+        return 0, 0, 0, 0
     if day <= 0:
         return max(1, likes // 2), follows, 0, 0
     return likes, follows, min(comments, likes), min(reposts, likes)
