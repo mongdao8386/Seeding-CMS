@@ -135,8 +135,12 @@ class ProxyOut(BaseModel):
     last_exit_ip: str | None
     last_error: str | None
     username: str | None
-    # Gan cho acc nao roi, neu co.
+    # Cac acc dang gan proxy nay (toi da `capacity` = ACCOUNTS_PER_PROXY). `bound_handle` la
+    # acc dau tien, giu lai cho tuong thich.
     bound_handle: str | None = None
+    bound_handles: list[str] = []
+    bound_count: int = 0
+    capacity: int = 5
     # Web TikTok qua proxy nay: '3/5 · ~150s' tu cac job trinh duyet; None khi chua do.
     tiktok_render: str | None = None
     tiktok_last_ok: bool | None = None
@@ -158,6 +162,15 @@ class ProxyImportOut(BaseModel):
     results: list[dict]
     skipped: list[dict]
     problems: list[dict]
+    # So acc con thieu proxy vua duoc gan vao cac proxy moi / con cho.
+    attached: int = 0
+
+
+class ProxyAttachOut(BaseModel):
+    attached: int
+    still_missing: int
+    free_slots: int
+    capacity: int
 
 
 # ------------------------------------------------------------------- profile
@@ -189,7 +202,10 @@ class StatsOut(BaseModel):
     needs_human: int
     warming: int
     proxies: int
+    # So proxy OK con it nhat mot cho trong, va tong so cho trong.
     proxies_free: int
+    proxy_slots_free: int = 0
+    accounts_per_proxy: int = 5
 
 
 class SystemOut(BaseModel):
@@ -445,6 +461,7 @@ class ResolveIn(BaseModel):
 
 
 class SettingsOut(BaseModel):
+    accounts_per_proxy: int = 5
     warmup_quiet_days: int
     warmup_days: int
     default_daily_cap: int

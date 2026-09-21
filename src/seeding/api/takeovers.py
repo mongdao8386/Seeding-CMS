@@ -118,6 +118,7 @@ async def settings_out() -> SettingsOut:
     """Nhung gia tri trong .env ma nguoi van hanh can nhin. Khong bao gio tra ve bi mat."""
     st = get_settings()
     return SettingsOut(
+        accounts_per_proxy=max(1, st.accounts_per_proxy),
         warmup_quiet_days=st.warmup_quiet_days,
         warmup_days=st.warmup_days,
         default_daily_cap=st.default_daily_cap,

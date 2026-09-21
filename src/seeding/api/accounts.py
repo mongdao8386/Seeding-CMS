@@ -34,10 +34,8 @@ from seeding.domain.models import (
     Platform,
     PostJob,
     Profile,
-    Proxy,
-    ProxyStatus,
 )
-from seeding.ops import bulk
+from seeding.ops import bulk, proxypool
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -116,6 +114,7 @@ def _report_out(report: bulk.Report) -> dict:
         "unknown_columns": report.unknown_columns,
         "renamed_columns": report.renamed_columns,
         "inferred_header": report.inferred_header,
+        "header_only": report.header_only,
         "rows": [
             {
                 "line": r.line,
@@ -158,8 +157,9 @@ async def import_accounts(
 ) -> ImportResult:
     """Tao tai khoan tu doan dan vao. Dong co cookie thi tao luon profile co phien.
 
-    `attach_proxies`: gan cho moi profile mot proxy CON RANH va da thu OK. Mot acc mot
-    proxy, khong dung chung. Het proxy ranh thi acc con lai nam o "thieu proxy".
+    `attach_proxies`: gan moi profile vao proxy da thu OK dang IT ACC NHAT; mot proxy dung
+    chung toi da ACCOUNTS_PER_PROXY acc (1 = khong dung chung). Het cho thi acc con lai
+    nam o "thieu proxy" cho toi khi dan them proxy.
     """
     if len(text) > 2_000_000:
         raise HTTPException(413, "Nhiều chữ hơn một danh sách tài khoản nên có.")
@@ -182,34 +182,21 @@ async def import_accounts(
     if not report.rows:
         raise HTTPException(400, "Không có dòng nào dùng được.")
 
-    spare: list[Proxy] = []
-    if attach_proxies:
-        spare = list(
-            (
-                await s.execute(
-                    select(Proxy)
-                    .outerjoin(Profile, Profile.proxy_id == Proxy.id)
-                    .where(Profile.id.is_(None), Proxy.status == ProxyStatus.OK)
-                    .order_by(Proxy.created_at)
-                )
-            )
-            .unique()
-            .scalars()
-            .all()
-        )
+    pool = await proxypool.build_pool(s) if attach_proxies else None
 
     workspace, persona = await ensure_defaults(s)
     try:
         created, warnings = await bulk.apply(
-            s, workspace.id, report.rows, default_persona_id=persona.id, proxies=spare
+            s, workspace.id, report.rows, default_persona_id=persona.id, pool=pool
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    if attach_proxies and len(spare) < report.with_cookies:
+    if pool is not None and pool.misses:
         warnings.append(
-            f"Chỉ có {len(spare)} proxy rảnh đã thử OK cho {report.with_cookies} tài khoản có "
-            "phiên. Số còn lại đang thiếu proxy — dán thêm proxy là chúng dùng được."
+            f"Hết chỗ proxy: {pool.misses} tài khoản có phiên chưa được gắn proxy (mỗi proxy "
+            f"dùng chung tối đa {pool.cap} tài khoản). Dán thêm proxy, hệ thống tự gắn cho "
+            "các tài khoản còn thiếu."
         )
 
     return ImportResult(

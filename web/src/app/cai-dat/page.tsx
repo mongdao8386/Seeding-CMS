@@ -54,6 +54,8 @@ export default function SettingsPage() {
               <dd className="mono">{settings.data.warmup_days}</dd>
               <dt className="text-muted">Trần bài / ngày</dt>
               <dd className="mono">{settings.data.default_daily_cap}</dd>
+              <dt className="text-muted">Tài khoản dùng chung một proxy (ACCOUNTS_PER_PROXY)</dt>
+              <dd className="mono">{settings.data.accounts_per_proxy}</dd>
               <dt className="text-muted">Kiểm phiên mỗi</dt>
               <dd className="mono">{settings.data.health_check_interval_hours} giờ</dd>
               <dt className="text-muted">Hỏng liên tiếp bao lần thì gọi người</dt>

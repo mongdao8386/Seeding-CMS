@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # De True khi chay that: mot chuc phien hien cua so thi may khong dung duoc nua.
     # Dat False khi can nhin mot job chay bang mat - lan dau chay tren tai khoan that,
     # hoac khi selector khong khop va can biet trang dang hien cai gi.
+    # So tai khoan dung chung MOT proxy (proxy dan cu dat). 1 = moi acc mot proxy rieng nhu
+    # truoc. Acc moi vao proxy dang it nguoi nhat; hai acc chung proxy khong bao gio chay
+    # cung luc (worker khoa theo proxy).
+    accounts_per_proxy: int = 5
     headless_jobs: bool = True
     # So trinh duyet mo song song trong MOT tien trinh worker (~400-600MB RAM + 1 loi CPU
     # moi cai). Job trinh duyet khong lay duoc cho trong 30 giay thi hen lai vai phut.

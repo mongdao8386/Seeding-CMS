@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api, ApiError, qs, type AccountRole, type AccountRow,
-  type BulkDeleteOut, type Page, type Platform, type Proxy } from "@/lib/api";
+  type BulkDeleteOut,
+  type ProxyAttachOut, type Page, type Platform, type Proxy } from "@/lib/api";
 import { ImportAccounts, ImportProxies } from "@/components/import-panel";
 import {
   Avatar,
@@ -57,7 +58,10 @@ function Accounts() {
   };
 
   const total = accounts.data?.total ?? 0;
-  const freeProxies = (proxies.data?.items ?? []).filter((p) => !p.bound_handle && p.status === "ok").length;
+  // Chỗ trống = tổng (sức chứa - số acc đang gắn) trên các proxy đã thử OK.
+  const freeProxies = (proxies.data?.items ?? [])
+    .filter((p) => p.status === "ok")
+    .reduce((n, p) => n + Math.max(0, p.capacity - p.bound_count), 0);
 
   return (
     <>
@@ -309,7 +313,7 @@ function AccountList({
       <div className="flex flex-col gap-2 bg-softer px-4 py-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between lg:px-5">
         <span>
           {blocked > 0
-            ? `${blocked} tài khoản chưa sẵn sàng — ${freeProxies > 0 ? `có ${freeProxies} proxy rảnh` : "dán thêm proxy là dùng được"}.`
+            ? `${blocked} tài khoản chưa sẵn sàng — ${freeProxies > 0 ? `proxy còn ${freeProxies} chỗ trống (tab Proxy → Gắn proxy cho acc còn thiếu)` : "proxy đã đầy, dán thêm proxy là dùng được"}.`
             : "Mọi tài khoản trong trang đều sẵn sàng."}
         </span>
         <span className="flex items-center gap-2">
@@ -329,7 +333,28 @@ function AccountList({
 function ProxyList({ proxies, onChange }: { proxies: Proxy[]; onChange: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   if (proxies.length === 0) return <Empty>Chưa có proxy. Bấm “Dán proxy”.</Empty>;
+
+  async function attachMissing() {
+    setBusy("attach");
+    setNote(null);
+    try {
+      const r = await api.post<ProxyAttachOut>("/proxies/attach-missing");
+      setNote(
+        r.attached > 0
+          ? `Đã gắn proxy cho ${r.attached} tài khoản${r.still_missing ? `, còn ${r.still_missing} tài khoản thiếu (hết chỗ, dán thêm proxy)` : ""}.`
+          : r.still_missing > 0
+            ? `Còn ${r.still_missing} tài khoản thiếu proxy nhưng mọi proxy đã đủ ${r.capacity} acc. Dán thêm proxy.`
+            : "Không có tài khoản xây kênh nào đang thiếu proxy.",
+      );
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function test(p: Proxy) {
     setBusy(p.id);
@@ -355,6 +380,15 @@ function ProxyList({ proxies, onChange }: { proxies: Proxy[]; onChange: () => vo
   return (
     <div className="card overflow-hidden">
       <ErrorNote message={error} />
+      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-softer px-4 py-2 text-sm lg:px-5">
+        <button className="btn text-xs" disabled={busy !== null} onClick={attachMissing}>
+          {busy === "attach" ? "…" : "Gắn proxy cho acc còn thiếu"}
+        </button>
+        <span className="text-muted">
+          Một proxy dùng chung tối đa {proxies[0]?.capacity ?? 5} tài khoản; acc mới vào proxy đang ít acc nhất, và hai acc chung proxy không bao giờ chạy cùng lúc.
+        </span>
+        {note && <span className="text-ok-text">{note}</span>}
+      </div>
       {proxies.map((p) => (
         <div key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-3 lg:px-5">
           <span className="mono w-14 font-medium">{p.label}</span>
@@ -378,12 +412,17 @@ function ProxyList({ proxies, onChange }: { proxies: Proxy[]; onChange: () => vo
               TikTok {p.tiktok_render}
             </span>
           )}
-          <span className="text-sm text-muted">{p.bound_handle ? `→ ${p.bound_handle}` : "rảnh"}</span>
+          <span className="text-sm text-muted" title={p.bound_handles.join(", ")}>
+            <span className={"mono " + (p.bound_count >= p.capacity ? "text-warn-text" : "")}>
+              {p.bound_count}/{p.capacity}
+            </span>
+            {p.bound_count > 0 ? ` → ${p.bound_handles.slice(0, 3).join(", ")}${p.bound_count > 3 ? ` +${p.bound_count - 3}` : ""}` : " · rảnh"}
+          </span>
           <span className="grow" />
           <button className="btn btn-ghost text-xs" disabled={busy === p.id} onClick={() => test(p)}>
             {busy === p.id ? "đang thử…" : "thử"}
           </button>
-          {!p.bound_handle && (
+          {p.bound_count === 0 && (
             <button className="btn btn-ghost text-xs text-bad-text" onClick={() => remove(p)}>
               xoá
             </button>

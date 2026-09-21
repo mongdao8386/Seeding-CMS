@@ -1,6 +1,6 @@
 """Doc danh sach proxy dan vao, tu nhieu dinh dang.
 
-Bat bien cua he thong la MOT acc MOT proxy, khong dung chung - nen so proxy luon phai
+Mot proxy dung chung toi da ACCOUNTS_PER_PROXY acc (mac dinh 5) - nen so proxy phai
 bang so tai khoan. Them tung cai qua form la viec on voi hai proxy va vo ly voi bon
 muoi, dung nhu chuyen da xay ra voi tai khoan truoc khi co phan nhap CSV.
 

@@ -9,9 +9,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from seeding.api.deps import DEFAULT_PAGE, MAX_PAGE, get_session, paginate
-from seeding.api.schemas import DeleteOut, Page, ProxyImportOut, ProxyOut, ProxyTestOut
+from seeding.api.schemas import (
+    DeleteOut,
+    Page,
+    ProxyAttachOut,
+    ProxyImportOut,
+    ProxyOut,
+    ProxyTestOut,
+)
 from seeding.domain.models import Account, Profile, Proxy, ProxyKind, ProxyStatus
-from seeding.ops import proxy_stats, proxylist, proxytest
+from seeding.ops import proxy_stats, proxylist, proxypool, proxytest
 
 router = APIRouter(prefix="/proxies", tags=["proxies"])
 
@@ -34,19 +41,24 @@ async def list_proxies(
     rows, total = await paginate(s, stmt.order_by(Proxy.created_at), limit, offset)
     proxies = [r[0] for r in rows]
 
-    bound = dict(
-        (
-            await s.execute(
-                select(Profile.proxy_id, Account.handle)
-                .join(Account, Account.id == Profile.account_id)
-                .where(Profile.proxy_id.in_([p.id for p in proxies] or [uuid.uuid4()]))
-            )
-        ).all()
+    # Nhieu acc chung mot proxy: gom thanh danh sach (dict() o day tung lang le bo bot acc).
+    bound: dict[uuid.UUID, list[str]] = {}
+    rows_bound = await s.execute(
+        select(Profile.proxy_id, Account.handle)
+        .join(Account, Account.id == Profile.account_id)
+        .where(Profile.proxy_id.in_([p.id for p in proxies] or [uuid.uuid4()]))
+        .order_by(Account.handle)
     )
+    for proxy_id, handle in rows_bound.all():
+        bound.setdefault(proxy_id, []).append(handle)
+    cap = proxypool.capacity()
     items = []
     for p in proxies:
         out = ProxyOut.model_validate(p)
-        out.bound_handle = bound.get(p.id)
+        out.bound_handles = bound.get(p.id, [])
+        out.bound_count = len(out.bound_handles)
+        out.bound_handle = out.bound_handles[0] if out.bound_handles else None
+        out.capacity = cap
         stats = await proxy_stats.read(p.id)
         out.tiktok_render = proxy_stats.summary(stats)
         out.tiktok_last_ok = stats.get("last_ok") if stats else None
@@ -118,8 +130,12 @@ async def import_proxies(
             )
         await s.commit()
 
+    # Proxy moi vao: acc xay kenh dang thieu proxy duoc gan ngay, khong phai nhap lai.
+    attach = await proxypool.attach_missing(s) if created else {"attached": 0}
+
     exits = [r["exit_ip"] for r in results if r["exit_ip"]]
     return ProxyImportOut(
+        attached=int(attach["attached"]),
         created=len(created),
         labels=[p.label for p in created],
         tested=len(results),
@@ -129,6 +145,13 @@ async def import_proxies(
         skipped=skipped,
         problems=[{"line": p.line, "raw": p.raw, "detail": p.detail} for p in report.problems],
     )
+
+
+@router.post("/attach-missing", response_model=ProxyAttachOut)
+async def attach_missing(s: AsyncSession = Depends(get_session)) -> ProxyAttachOut:
+    """Gan proxy cho acc xay kenh con thieu (proxy OK dang it acc nhat, toi da
+    ACCOUNTS_PER_PROXY acc moi proxy). Acc da co proxy khong bi doi."""
+    return ProxyAttachOut(**(await proxypool.attach_missing(s)))
 
 
 @router.post("/{proxy_id}/test", response_model=ProxyTestOut)

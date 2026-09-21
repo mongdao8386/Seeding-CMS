@@ -215,6 +215,8 @@ class Report:
     rejoined_rows: int = 0
     # File khong co dong tieu de: dinh dang da doan (de nguoi dung thay minh duoc hieu dung).
     inferred_header: str | None = None
+    # Chi dan moi dong tieu de: khong phai loi, chi la chua co acc nao. Giao dien hien goi y.
+    header_only: bool = False
 
     @property
     def ok(self) -> bool:
@@ -244,7 +246,7 @@ def sniff_delimiter(text: str) -> str:
     # dau `;` (va ca dau phay) - dem nhieu nhat se chon nham (21/09/2026: acc that dan vao
     # bi bao "missing: handle"). `|` va tab khong xuat hien tu nhien trong ten cot, mat
     # khau hay email, nen thay tu 3 cai tro len la dau phan cach that.
-    for strong in ("|", "	"):
+    for strong in ("|", "\t"):
         if counts[strong] >= 3:
             return strong
     best = max(counts, key=lambda d: counts[d])
@@ -431,6 +433,7 @@ def parse(
     report.rejoined_rows = rejoined
 
     if not report.rows and not report.problems:
+        report.header_only = True
         report.problems.append(
             Problem(
                 1,
@@ -483,7 +486,7 @@ async def apply(
     rows: list[Row],
     *,
     default_persona_id=None,
-    proxies: list | None = None,
+    pool=None,
 ) -> tuple[list[Account], list[str]]:
     """Tao tai khoan, va tao ca profile cho nhung dong co cookie.
 
@@ -503,9 +506,8 @@ async def apply(
     from seeding.ops import cookies as cookies_mod
 
     warnings: list[str] = []
-    # Moi acc mot proxy, khong dung chung: mot proxy cho hai tai khoan la hai tai khoan
-    # di ra cung mot IP, va do la lien ket ro rang nhat co the tao ra.
-    spare = list(proxies or [])
+    # `pool` (ops/proxypool.ProxyPool): mot proxy dung chung toi da ACCOUNTS_PER_PROXY acc,
+    # acc moi vao proxy dang it nguoi nhat. Booster khong can proxy nen khong chiem cho.
     personas: dict[str, Persona] = {
         p.name.lower(): p
         for p in (
@@ -561,13 +563,15 @@ async def apply(
             continue
 
         profile = await profiles_mod.create_profile(
-            session, account, proxy=spare.pop(0) if spare else None
+            session,
+            account,
+            proxy=pool.take() if pool and row.role is not AccountRole.BOOSTER else None,
         )
         await profiles_mod.save_cookies(session, profile, parsed.storage_state)
 
         for warning in parsed.warnings:
             warnings.append(f"Line {row.line} ({row.handle}): {warning}")
-        if profile.proxy_id is None:
+        if profile.proxy_id is None and row.role is not AccountRole.BOOSTER:
             warnings.append(
                 f"Line {row.line} ({row.handle}): profile created with NO proxy. It will go out "
                 "on your own address until you attach one."

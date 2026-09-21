@@ -109,6 +109,26 @@ async def bind_proxy(
             "force=True and record why."
         )
 
+    if profile.proxy_id != proxy.id:
+        from sqlalchemy import func
+
+        from seeding.config import get_settings
+
+        cap = max(1, get_settings().accounts_per_proxy)
+        load = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Profile)
+                    .where(Profile.proxy_id == proxy.id, Profile.id != profile.id)
+                )
+            ).scalar_one()
+        )
+        if load >= cap:
+            raise ProfileError(
+                f"Proxy {proxy.label} already serves {load} accounts (ACCOUNTS_PER_PROXY={cap})."
+            )
+
     was = profile.proxy_id
     profile.proxy_id = proxy.id
     if was and was != proxy.id:

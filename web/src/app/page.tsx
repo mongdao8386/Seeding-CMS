@@ -84,8 +84,10 @@ export default function Overview() {
               )}
             </div>
             <div className="flex justify-between">
-              <span>Proxy còn rảnh</span>
-              <span className="text-ink">{s ? `${s.proxies_free} / ${s.proxies}` : "…"}</span>
+              <span>Proxy còn chỗ</span>
+              <span className="text-ink">
+                {s ? `${s.proxies_free} / ${s.proxies} · ${s.proxy_slots_free} chỗ trống (${s.accounts_per_proxy} acc/proxy)` : "…"}
+              </span>
             </div>
           </div>
           <Link href="/tai-khoan" className="text-sm">

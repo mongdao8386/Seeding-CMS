@@ -13,7 +13,7 @@ from seeding.api.schemas import StatsOut, SystemOut
 from seeding.config import get_settings
 from seeding.domain import readiness
 from seeding.domain.models import Account, AccountRole, AccountStatus, Profile, Proxy
-from seeding.ops import flags
+from seeding.ops import flags, proxypool
 
 router = APIRouter(tags=["system"])
 
@@ -33,13 +33,8 @@ async def stats(s: AsyncSession = Depends(get_session)) -> StatsOut:
     live = [a for a in accounts if a.status is not AccountStatus.DEAD]
 
     proxies = int((await s.execute(select(func.count()).select_from(Proxy))).scalar_one())
-    bound = int(
-        (
-            await s.execute(
-                select(func.count()).select_from(Profile).where(Profile.proxy_id.is_not(None))
-            )
-        ).scalar_one()
-    )
+    pool = await proxypool.build_pool(s)
+    ok_with_room = len(pool._heap)
     return StatsOut(
         channels=sum(1 for a in accounts if a.role is AccountRole.CHANNEL),
         boosters=sum(1 for a in accounts if a.role is AccountRole.BOOSTER),
@@ -50,7 +45,9 @@ async def stats(s: AsyncSession = Depends(get_session)) -> StatsOut:
         needs_human=sum(1 for a in accounts if a.status is AccountStatus.NEEDS_HUMAN),
         warming=sum(1 for a in accounts if a.status is AccountStatus.WARMING),
         proxies=proxies,
-        proxies_free=max(0, proxies - bound),
+        proxies_free=ok_with_room,
+        proxy_slots_free=pool.free_slots,
+        accounts_per_proxy=pool.cap,
     )
 
 

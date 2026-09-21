@@ -23,6 +23,7 @@ Cấu hình trong `.env` (chép từ `.env.example`). Ba giá trị hay chỉnh:
 | `WARMUP_QUIET_DAYS` | 2 | mấy ngày đầu **không đăng gì**, chỉ nuôi |
 | `WARMUP_DAYS` | 3 | ramp từ 1 bài/ngày lên trần trong mấy ngày |
 | `DEFAULT_DAILY_CAP` | 3 | trần bài/ngày sau warm-up |
+| `ACCOUNTS_PER_PROXY` | 5 | mấy acc dùng chung một proxy; 1 = mỗi acc một proxy riêng |
 
 ## 2. Tài khoản (phần 1)
 
@@ -44,8 +45,15 @@ cookie thì tạo luôn profile đã đăng nhập.
 
 **Dán proxy** trước hoặc sau đều được: `host:port:user:pass`, `user:pass@host:port`,
 `host:port`. Mỗi proxy được thử ngay. Tài khoản có phiên sẽ tự gắn một proxy rảnh đã thử
-OK — **một acc một proxy, không dùng chung, không đổi**. Hết proxy rảnh thì acc nằm ở
-"Thiếu proxy" cho tới khi bạn dán thêm.
+OK đang **ít acc nhất** — **một proxy dùng chung tối đa 5 acc** (`ACCOUNTS_PER_PROXY` trong
+`.env`; đặt 1 là mỗi acc một proxy riêng như trước), và **một acc ở yên một proxy, không
+đổi**. 10 proxy là đủ cho 50 acc. Hai acc chung proxy không bao giờ chạy cùng lúc: worker
+khoá theo proxy, job tới sau hẹn lại vài phút (không tính lần thử). Hết chỗ thì acc nằm ở
+"Thiếu proxy"; dán thêm proxy là hệ thống tự gắn cho các acc còn thiếu, hoặc bấm **Gắn
+proxy cho acc còn thiếu** ở tab Proxy. Acc tương tác chéo không cần proxy nên không chiếm
+chỗ. Cái giá của việc dùng chung: 5 acc cùng một IP là một mối liên kết TikTok nhìn thấy
+được, và một proxy xấu kéo theo cả 5 acc trên nó — đừng dồn các acc quan trọng nhất vào
+chung một proxy.
 
 Bấm vào một tài khoản → **Mở trình duyệt**: cửa sổ thật với đúng proxy, cookie, fingerprint
 của acc đó. Đăng nhập tay, giải captcha, xem gì cũng được; đóng cửa sổ là cookie được lưu.
@@ -55,7 +63,7 @@ của acc đó. Đăng nhập tay, giải captcha, xem gì cũng được; đón
 Trang một acc có nút **Xoá** (xoá cả profile, cookie, thông tin đăng nhập, lịch nuôi, lịch
 đăng). Danh sách Tài khoản có ô chọn từng dòng, **Xoá đã chọn** và **Xoá tất cả** (theo
 tổng hiện tại). Acc đã đăng bài được giữ lại và hỏi thêm một lần vì xoá là mất lịch sử
-đăng. Proxy không bị xoá theo; proxy đang gắn acc thì không xoá được cho tới khi acc mất.
+đăng. Proxy không bị xoá theo; proxy còn acc nào gắn thì không xoá được. Xoá acc là trả lại một chỗ trên proxy đó.
 
 ## 2c. Đăng nhập lại một acc (phiên chết, captcha)
 

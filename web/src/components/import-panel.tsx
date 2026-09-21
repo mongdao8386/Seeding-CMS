@@ -125,7 +125,7 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
                 <b>{check.cookie_problems}</b> cookie hỏng
               </span>
             )}
-            {problems > 0 && (
+            {problems > 0 && !check.header_only && (
               <span className="text-bad-text">
                 <b>{problems}</b> dòng có vấn đề
               </span>
@@ -153,7 +153,12 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
               )}
             </div>
           )}
-          {problems > 0 && (
+          {check.header_only && (
+            <div className="text-sm text-ok-text">
+              Đã hiểu định dạng này. Giờ dán các dòng tài khoản vào bên dưới dòng tiêu đề (hoặc bỏ dòng tiêu đề, chỉ dán các dòng tài khoản cũng được).
+            </div>
+          )}
+          {problems > 0 && !check.header_only && (
             <ul className="text-sm text-muted">
               {check.problems.slice(0, 6).map((p) => (
                 <li key={p.line}>
@@ -198,7 +203,7 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
           </button>
         )}
         <span className="self-center text-xs text-faint">
-          Mỗi tài khoản có phiên sẽ được gắn một proxy rảnh đã thử OK. Hết proxy thì dán thêm.
+          Tài khoản có phiên được gắn vào proxy đã thử OK đang ít acc nhất; một proxy dùng chung tối đa 5 tài khoản. Hết chỗ thì dán thêm proxy.
         </span>
       </div>
     </div>
@@ -245,6 +250,12 @@ export function ImportProxies({ onDone, onClose }: { onDone: () => void; onClose
       {result && (
         <div className="rounded-lg bg-softer p-3 text-sm">
           Đã thêm <b>{result.created}</b>, thử <b>{result.tested}</b>, qua <b className="text-ok-text">{result.passed}</b>.
+          {result.attached > 0 && (
+            <>
+              {" "}
+              Đã gắn proxy cho <b>{result.attached}</b> tài khoản đang thiếu.
+            </>
+          )}
           {result.duplicate_exit_ips.length > 0 && (
             <div className="mt-1 text-warn-text">
               Trùng IP ra: {result.duplicate_exit_ips.join(", ")} — hai proxy này thực ra là một lối ra.

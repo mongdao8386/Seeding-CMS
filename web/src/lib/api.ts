@@ -112,6 +112,8 @@ export type AccountDetail = AccountRow & {
   profile_id: string | null;
 };
 
+export type ProxyAttachOut = { attached: number; still_missing: number; free_slots: number; capacity: number };
+
 export type BulkDeleteOut = { deleted: number; skipped: string[]; detail: string };
 
 export type AccountSecrets = {
@@ -135,6 +137,9 @@ export type Proxy = {
   tiktok_last_ok: boolean | null;
   username: string | null;
   bound_handle: string | null;
+  bound_handles: string[];
+  bound_count: number;
+  capacity: number;
 };
 
 export type Stats = {
@@ -148,6 +153,8 @@ export type Stats = {
   warming: number;
   proxies: number;
   proxies_free: number;
+  proxy_slots_free: number;
+  accounts_per_proxy: number;
 };
 
 export type SystemStatus = {
@@ -168,6 +175,7 @@ export type ImportCheck = {
   unknown_columns: string[];
   renamed_columns: Record<string, string>;
   inferred_header: string | null;
+  header_only: boolean;
   rows: {
     line: number;
     platform: string;
@@ -198,6 +206,7 @@ export type ProxyImportResult = {
   results: { label: string; ok: boolean; exit_ip: string | null; error: string | null }[];
   skipped: { line: number; raw: string; detail: string }[];
   problems: { line: number; raw: string; detail: string }[];
+  attached: number;
 };
 
 export type OpenedProfile = { profile_id: string; handle: string; pid: number; detail: string };
@@ -276,6 +285,7 @@ export type Takeover = {
 };
 
 export type Settings = {
+  accounts_per_proxy: number;
   warmup_quiet_days: number;
   warmup_days: number;
   default_daily_cap: number;

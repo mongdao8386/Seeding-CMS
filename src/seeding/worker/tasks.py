@@ -187,8 +187,25 @@ async def run_post_job(ctx: dict, job_id: str) -> str:
 
             profile.proxy = await session.get(Proxy, profile.proxy_id)
 
+        redis = ctx.get("redis")
+        proxy_key = _proxy_lock_key(profile)
+        if redis is not None and proxy_key is not None:
+            if not await redis.set(proxy_key, job_id, nx=True, ex=ACCOUNT_LOCK_TTL):
+                # Acc khac cung proxy dang chay: hen lai vai phut, khong tinh lan thu.
+                await session.delete(attempt)
+                job.attempt_count = max(0, job.attempt_count - 1)
+                job.status = JobStatus.SCHEDULED
+                job.scheduled_at = datetime.now(UTC) + timedelta(minutes=random.randint(2, 5))
+                await session.commit()
+                log.info("job.proxy_busy", job=job_id, handle=job.account.handle)
+                return job.status.value
+
         await session.commit()  # khong giu giao dich mo trong luc dang bai
-        result = await adapter.publish(job.account, job.variant, job.target, profile=profile)
+        try:
+            result = await adapter.publish(job.account, job.variant, job.target, profile=profile)
+        finally:
+            if redis is not None and proxy_key is not None:
+                await redis.delete(proxy_key)
 
         attempt.finished_at = datetime.now(UTC)
         attempt.ok = result.ok
@@ -374,6 +391,11 @@ def browser_slots() -> asyncio.Semaphore:
     return _browser_slots
 
 
+def _proxy_lock_key(profile) -> str | None:
+    proxy_id = getattr(profile, "proxy_id", None)
+    return f"lock:proxy:{proxy_id}" if proxy_id is not None else None
+
+
 async def _claim_siblings(session, job) -> list:
     """Job mo thang link cua cung acc, toi han trong BATCH_HORIZON: nhan luon de chay
     chung trinh duyet. Nhan bang UPDATE co dieu kien nhu activity_tick."""
@@ -476,6 +498,17 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             log.info("activity.deferred", job=job_id, handle=job.account.handle)
             return "deferred"
 
+        # Hai acc chung mot proxy khong bao gio hanh dong CUNG LUC: cung luc tu mot IP moi la
+        # dau vet lien ket; lan luot thi giong mot nha dung chung mang. Booster khong proxy.
+        proxy_key = _proxy_lock_key(profile)
+        if redis is not None and proxy_key is not None:
+            if not await redis.set(proxy_key, job_id, nx=True, ex=ACCOUNT_LOCK_TTL):
+                await redis.delete(lock_key)
+                _defer(job, random.randint(2, 5), "acc khác cùng proxy đang chạy, hẹn lại")
+                await session.commit()
+                log.info("activity.proxy_busy", job=job_id, handle=job.account.handle)
+                return "deferred"
+
         platform = job.account.platform
         slot = browser_slots() if adapters.uses_browser(platform) else None
         if slot is not None:
@@ -484,6 +517,8 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
             except TimeoutError:
                 if redis is not None:
                     await redis.delete(lock_key)
+                    if proxy_key is not None:
+                        await redis.delete(proxy_key)
                 _defer(job, random.randint(2, 6), "hết chỗ trình duyệt, hẹn lại")
                 await session.commit()
                 log.info("activity.no_browser_slot", job=job_id, handle=job.account.handle)
@@ -515,6 +550,8 @@ async def run_activity_job(ctx: dict, job_id: str) -> str:
                 slot.release()
             if redis is not None:
                 await redis.delete(lock_key)
+                if proxy_key is not None:
+                    await redis.delete(proxy_key)
 
         for item in batch:
             result = results.get(item.id)
