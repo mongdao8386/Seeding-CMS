@@ -135,8 +135,13 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
               </span>
             )}
           </div>
-          {(check.inferred_header || Object.keys(check.renamed_columns).length > 0 || check.unknown_columns.length > 0) && (
+          {(check.glued_records > 0 || check.inferred_header || Object.keys(check.renamed_columns).length > 0 || check.unknown_columns.length > 0) && (
             <div className="text-xs text-muted">
+              {check.glued_records > 0 && (
+                <div>
+                  Các acc dính liền trên một dòng (mất dấu xuống dòng khi chép): đã tự tách {check.glued_records + 1} acc.
+                </div>
+              )}
               {check.inferred_header && (
                 <div>
                   Không có dòng tiêu đề, hiểu là: <span className="mono">{check.inferred_header}</span>

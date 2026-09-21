@@ -117,6 +117,7 @@ def _report_out(report: bulk.Report) -> dict:
         "inferred_header": report.inferred_header,
         "header_only": report.header_only,
         "input_lines": report.input_lines,
+        "glued_records": report.glued_records,
         "rows": [
             {
                 "line": r.line,

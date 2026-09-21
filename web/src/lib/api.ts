@@ -185,6 +185,7 @@ export type ImportCheck = {
   inferred_header: string | null;
   header_only: boolean;
   input_lines: number;
+  glued_records: number;
   rows: {
     line: number;
     platform: string;

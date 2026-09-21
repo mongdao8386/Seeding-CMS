@@ -131,6 +131,49 @@ SELLER_OAUTH_HEADER = (
 )
 
 
+# Dau moi acc trong file nguoi ban: `ten|matkhau|email@...|`. Email o o thu ba la moc chac: ben
+# trong cookie khong bao gio co dang `a|b|c@d.e|`.
+_RECORD_START = re.compile(r"([^\s|]{2,80})\|([^\s|]{1,160})\|([^\s|@]+@[^\s|@]+\.[^\s|]+)\|")
+
+
+def split_glued_records(text: str) -> tuple[str, int]:
+    """Tach cac acc DINH LIEN tren mot dong thanh moi acc mot dong.
+
+    Chep danh sach tu trang web / Zalo / Telegram hay bien dau xuong dong thanh dau cach:
+    50 acc thanh MOT dong 351 o (21/09/2026). Moi cho thay `ten|matkhau|email|` dung sau
+    khoang trang (khong phai dau dong) la mot acc moi -> doi khoang trang do thanh xuong dong.
+    Tra ve (van ban moi, so cho da tach).
+    """
+    out: list[str] = []
+    last = 0
+    splits = 0
+    for m in _RECORD_START.finditer(text):
+        i = m.start()
+        j = i
+        while j > 0 and text[j - 1] in " \t\u00a0":
+            j -= 1
+        if j == i or j == 0 or text[j - 1] in "\r\n":
+            continue  # dau van ban / dau dong / dinh sat khong khoang trang: khong phai cho noi
+        out.append(text[last:j])
+        out.append("\n")
+        last = i
+        splits += 1
+    out.append(text[last:])
+    return "".join(out), splits
+
+
+def _header_cell(cell: str) -> str:
+    """O tieu de co chu thua cua nguoi ban ("Format username", "Cookie MAIL TRUST OAuth2 LIVE
+    LOGIN duoc") -> lay tu dau tien la ten cot that."""
+    names = KNOWN | set(ALIASES)
+    if cell in names or _ACCOUNT_PASS.match(cell):
+        return cell
+    for token in cell.replace(",", " ").split():
+        if token in names or _ACCOUNT_PASS.match(token):
+            return token
+    return cell
+
+
 def resolve_headers(raw: list[str], default_platform: Platform | None = None) -> list[str]:
     """Ten cot cua nguoi ban -> ten cua he thong, co xet NGU CANH ca dong tieu de.
 
@@ -155,6 +198,7 @@ def resolve_headers(raw: list[str], default_platform: Platform | None = None) ->
 def looks_like_header(cells: list[str]) -> bool:
     """Dong dau la tieu de khi co it nhat hai o la TEN COT (khong phai du lieu)."""
     names = KNOWN | set(ALIASES)
+    cells = [_header_cell(c) for c in cells]
     hits = sum(1 for c in cells if c in names or _ACCOUNT_PASS.match(c))
     return hits >= 2
 
@@ -223,6 +267,8 @@ class Report:
     # So dong co chu trong o dan (ke ca dong tieu de). Giao dien doi chieu voi so dong doc duoc
     # de nguoi dung THAY khi co dong bi nuot, thay vi tin vao mot con so.
     input_lines: int = 0
+    # So acc dinh lien tren mot dong da duoc tach ra (chep tu web/Zalo lam mat xuong dong).
+    glued_records: int = 0
 
     @property
     def ok(self) -> bool:
@@ -279,6 +325,8 @@ def parse(
     # dung, vi nhin bang mat thi file hoan toan dung.
     delimiter = sniff_delimiter(text)
     clean = text.lstrip("\ufeff")
+    if delimiter == "|":
+        clean, report.glued_records = split_glued_records(clean)
     first_line = next((ln for ln in clean.splitlines() if ln.strip()), "")
     first_cells = [c.strip() for c in first_line.split(delimiter)]
     inferred = None
@@ -305,7 +353,7 @@ def parse(
         report.problems.append(Problem(0, "", "The file is empty."))
         return report
 
-    raw_headers = [(h or "").strip().lower() for h in reader.fieldnames]
+    raw_headers = [_header_cell((h or "").strip().lower()) for h in reader.fieldnames]
     headers = resolve_headers(raw_headers, default_platform)
     header_map = dict(zip(raw_headers, headers, strict=True))
     report.renamed_columns = {
@@ -340,7 +388,9 @@ def parse(
     seen: set[tuple[str, str]] = set()
     for offset, raw in enumerate(reader, start=first_data_line):
         row = {
-            header_map.get((k or "").strip().lower(), (k or "").strip().lower()): (v or "").strip()
+            header_map.get(_header_cell((k or "").strip().lower()), (k or "").strip().lower()): (
+                v or ""
+            ).strip()
             for k, v in raw.items()
             if k is not None
         }
