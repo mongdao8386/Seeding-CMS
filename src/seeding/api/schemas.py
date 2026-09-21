@@ -80,6 +80,16 @@ class AccountPatch(BaseModel):
     role: AccountRole | None = None
 
 
+class MailCodeOut(BaseModel):
+    """Ma xac minh vua lay tu hom thu cua acc. Khong bao gio kem token."""
+
+    code: str
+    subject: str
+    sender: str
+    received_at: datetime | None = None
+    age_seconds: int | None = None
+
+
 class BulkDeleteIn(BaseModel):
     """Xoa nhieu tai khoan: theo danh sach id, hoac `all=True` = moi tai khoan trong he thong."""
 

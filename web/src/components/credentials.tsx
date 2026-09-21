@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api, type AccountSecrets } from "@/lib/api";
+import { api, type AccountSecrets, type MailCode } from "@/lib/api";
 import { useLoad } from "@/components/ui";
 
 /** Thông tin đăng nhập dán vào lúc nhập acc: xem, chép, sửa. Mật khẩu ẩn cho tới khi bấm Hiện. */
@@ -60,6 +60,50 @@ function Value({ k, v, shown }: { k: string; v: string; shown: boolean }) {
         {copied ? "đã chép" : "Chép"}
       </button>
     </span>
+  );
+}
+
+/** Lấy mã xác minh nền tảng vừa gửi về hộp thư của acc (OAuth2 của hộp thư). */
+export function MailCodeButton({ accountId }: { accountId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState<MailCode | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function fetchCode() {
+    setBusy(true);
+    setError(null);
+    try {
+      setFound(await api.post<MailCode>(`/accounts/${accountId}/mail-code`));
+    } catch (e) {
+      setFound(null);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const age =
+    found?.age_seconds == null
+      ? ""
+      : found.age_seconds < 90
+        ? `${found.age_seconds} giây trước`
+        : `${Math.round(found.age_seconds / 60)} phút trước`;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <button type="button" className="btn text-xs" disabled={busy} onClick={fetchCode}>
+        {busy ? "Đang đọc hộp thư…" : "Lấy mã từ email"}
+      </button>
+      {found && (
+        <>
+          <Value k="mail_code" v={found.code} shown />
+          <span className="text-xs text-muted" title={`${found.sender} · ${found.subject}`}>
+            {age}
+          </span>
+        </>
+      )}
+      {error && <span className="text-xs text-warn-text">{error}</span>}
+    </div>
   );
 }
 
@@ -161,6 +205,7 @@ export function CredentialsCard({ accountId }: { accountId: string }) {
           </div>
         )}
       </dl>
+      {!editing && fields.mail_refresh_token && fields.mail_client_id && <MailCodeButton accountId={accountId} />}
       <p className="text-xs text-faint">Lưu mã hoá trong két, dùng khi phải đăng nhập lại trong trình duyệt của profile.</p>
     </section>
   );
@@ -218,6 +263,7 @@ export function CredentialsInline({ accountId }: { accountId: string }) {
       <button type="button" className="btn btn-ghost px-1.5 py-0 text-xs" onClick={() => setShown((s) => !s)}>
         {shown ? "Ẩn" : "Hiện"}
       </button>
+      {data.fields.mail_refresh_token && data.fields.mail_client_id && <MailCodeButton accountId={accountId} />}
     </div>
   );
 }

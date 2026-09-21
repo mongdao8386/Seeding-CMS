@@ -20,6 +20,7 @@ from seeding.api.schemas import (
     BulkDeleteOut,
     DeleteOut,
     ImportResult,
+    MailCodeOut,
     Page,
     SecretsIn,
     SecretsOut,
@@ -35,7 +36,7 @@ from seeding.domain.models import (
     PostJob,
     Profile,
 )
-from seeding.ops import bulk, proxypool
+from seeding.ops import bulk, mailbox, proxypool
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -396,3 +397,40 @@ async def put_account_secrets(
     account.set_secrets(data)
     await s.commit()
     return _secrets_out(account)
+
+
+@router.post("/{account_id}/mail-code", response_model=MailCodeOut)
+async def fetch_mail_code(
+    account_id: uuid.UUID, s: AsyncSession = Depends(get_session)
+) -> MailCodeOut:
+    """Lay ma xac minh moi nhat nen tang gui ve hom thu cua acc (OAuth2 cua hom thu: refresh
+    token + client id da dan luc nhap). Dung luc dang nhap lai trong trinh duyet cua profile.
+    Microsoft xoay refresh token moi lan dung - cai moi duoc ghi lai vao ket ngay."""
+    account = await s.get(Account, account_id)
+    if account is None:
+        raise HTTPException(404, "Không có tài khoản này")
+    secrets = account.get_secrets() or {}
+
+    async def keep(new_token: str | None) -> None:
+        if new_token:
+            data = account.get_secrets() or {}
+            data["mail_refresh_token"] = new_token
+            account.set_secrets(data)
+            await s.commit()
+
+    try:
+        found = await mailbox.fetch_code(secrets, platform=account.platform.value)
+    except mailbox.MailboxError as exc:
+        await keep(getattr(exc, "new_refresh_token", None))
+        raise HTTPException(409, str(exc)) from exc
+    await keep(found.new_refresh_token)
+    age = None
+    if found.received_at is not None:
+        age = max(0, int((datetime.now(UTC) - found.received_at).total_seconds()))
+    return MailCodeOut(
+        code=found.code,
+        subject=found.subject,
+        sender=found.sender,
+        received_at=found.received_at,
+        age_seconds=age,
+    )

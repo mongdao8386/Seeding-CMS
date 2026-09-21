@@ -74,7 +74,12 @@ Khi hàng chờ người báo "phiên chết" hay "captcha":
 2. Đăng nhập lại ngay trong cửa sổ đó. Tên đăng nhập, mật khẩu, email khôi phục đã
    dán lúc nhập acc nằm ngay trên thẻ: bấm **Thông tin đăng nhập** → **Chép** → dán.
    Không có mật khẩu thì **quét mã QR** bằng app TikTok đang đăng nhập trên điện thoại.
-   Gặp captcha thì giải luôn. Mã 2FA hiện sẵn nếu đã lưu seed. Thiếu hay sai gì thì
+   Gặp captcha thì giải luôn. Mã 2FA hiện sẵn nếu đã lưu seed. TikTok đòi **mã gửi về
+   email** thì bấm **Lấy mã từ email** ngay trên thẻ: hệ thống dùng `refresh_token` +
+   `client_id` của hộp thư (định dạng acc có OAuth2) đọc thư mới nhất của TikTok trong 30
+   phút, cả Hộp thư đến lẫn Thư rác, và hiện mã kèm nút Chép. Chưa thấy mã thì bấm gửi lại
+   mã trên TikTok, đợi 10-20 giây rồi bấm lại. Acc không có hai khoá đó thì mở hộp thư bằng
+   mật khẩu email (cũng nằm trên thẻ). Thiếu hay sai gì thì
    sửa ở thẻ **Thông tin đăng nhập** trên trang tài khoản (nút Sửa).
 3. **Đóng cửa sổ.** Cookie mới được lưu; hệ thống hỏi TikTok ngay xem phiên mới có sống
    không và ghi vào dòng thời gian ("Kiểm phiên").

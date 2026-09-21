@@ -116,6 +116,14 @@ export type ProxyAttachOut = { attached: number; still_missing: number; free_slo
 
 export type BulkDeleteOut = { deleted: number; skipped: string[]; detail: string };
 
+export type MailCode = {
+  code: string;
+  subject: string;
+  sender: string;
+  received_at: string | null;
+  age_seconds: number | null;
+};
+
 export type AccountSecrets = {
   fields: Record<string, string>;
   totp_code: string | null;
