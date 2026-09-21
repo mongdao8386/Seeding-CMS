@@ -184,6 +184,7 @@ export type ImportCheck = {
   renamed_columns: Record<string, string>;
   inferred_header: string | null;
   header_only: boolean;
+  input_lines: number;
   rows: {
     line: number;
     platform: string;

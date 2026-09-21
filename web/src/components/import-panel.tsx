@@ -116,6 +116,10 @@ export function ImportAccounts({ onDone, onClose }: { onDone: () => void; onClos
           <div className="flex flex-wrap gap-4 text-sm">
             <span>
               <b>{check.ready}</b> dòng dùng được
+              <span className="text-muted">
+                {" "}
+                / {check.input_lines - (check.inferred_header || check.input_lines === 0 ? 0 : 1)} dòng đã dán
+              </span>
             </span>
             <span className={check.with_cookies === check.ready ? "text-ok-text" : "text-warn-text"}>
               <b>{check.with_cookies}</b> có phiên đăng nhập

@@ -220,6 +220,9 @@ class Report:
     inferred_header: str | None = None
     # Chi dan moi dong tieu de: khong phai loi, chi la chua co acc nao. Giao dien hien goi y.
     header_only: bool = False
+    # So dong co chu trong o dan (ke ca dong tieu de). Giao dien doi chieu voi so dong doc duoc
+    # de nguoi dung THAY khi co dong bi nuot, thay vi tin vao mot con so.
+    input_lines: int = 0
 
     @property
     def ok(self) -> bool:
@@ -281,13 +284,22 @@ def parse(
     inferred = None
     if first_line and not looks_like_header([c.lower() for c in first_cells]):
         inferred = infer_header(first_cells)
+    # File nguoi ban (phan cach bang `|` hoac tab) KHONG co khai niem "truong trong ngoac kep".
+    # De csv xu ly ngoac kep thi mot doan cookie nam sau dau `|` ma bat dau bang dau " se nuot
+    # luon cac DONG phia sau cho toi dau " ke tiep: 21/09/2026, 50 acc dan vao chi con 1 dong.
+    # Voi hai dau phan cach nay moi dong luon la mot acc. File dau phay / cham phay van la CSV
+    # chuan, giu nguyen cach doc ngoac kep.
+    quoting = csv.QUOTE_NONE if delimiter in ("|", "\t") else csv.QUOTE_MINIMAL
+    report.input_lines = sum(1 for ln in clean.splitlines() if ln.strip())
     if inferred is not None:
         # Khong co dong tieu de: dong dau da la du lieu. Dung dinh dang doan duoc.
-        reader = csv.DictReader(io.StringIO(clean), fieldnames=list(inferred), delimiter=delimiter)
+        reader = csv.DictReader(
+            io.StringIO(clean), fieldnames=list(inferred), delimiter=delimiter, quoting=quoting
+        )
         report.inferred_header = delimiter.join(inferred)
         first_data_line = 1
     else:
-        reader = csv.DictReader(io.StringIO(clean), delimiter=delimiter)
+        reader = csv.DictReader(io.StringIO(clean), delimiter=delimiter, quoting=quoting)
         first_data_line = 2
     if reader.fieldnames is None:
         report.problems.append(Problem(0, "", "The file is empty."))

@@ -474,3 +474,26 @@ def test_headerless_rows_with_a_real_cookie_still_split_on_the_pipe():
     assert report.with_cookies == 2
     assert report.rows[0].secrets["password"] == "Pass@!123"
     assert report.rows[0].secrets["mail_client_id"] == GUID
+
+
+def test_a_quote_at_the_start_of_a_cookie_piece_never_swallows_the_following_rows():
+    """Cookie co dau `|` ben trong, va manh sau dau `|` bat dau bang dau ngoac kep: csv coi do
+    la truong trong ngoac va nuot cac dong sau. 50 acc that dan vao chi con 1 dong."""
+    quote = chr(34)
+    lines = [
+        f"user{i}|Pw@{i}|m{i}@hotmail.com|mailpw{i}|M.C5_BAY.tok{i}|{GUID}|kp{i}@getnada.com|"
+        f"a=1; sessionid=abc{i}def; ttwid=1|{quote}quoted; b=2"
+        for i in range(1, 51)
+    ]
+    text = chr(10).join(lines) + chr(10)
+    report = bulk.parse(text, default_platform=Platform.TIKTOK)
+    assert report.ok, [p.detail for p in report.problems][:3]
+    assert len(report.rows) == 50 and report.input_lines == 50
+    assert report.with_cookies == 50
+    assert [r.handle for r in report.rows][:2] == ["user1", "user2"]
+
+
+def test_comma_files_still_honour_quoted_fields():
+    text = "platform,handle,password" + chr(10) + 'facebook,seed_q,"pa,ss"' + chr(10)
+    row = bulk.parse(text).rows[0]
+    assert row.secrets["password"] == "pa,ss"
