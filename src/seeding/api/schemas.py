@@ -176,6 +176,13 @@ class ProxyImportOut(BaseModel):
     attached: int = 0
 
 
+class ProxyEvacuateOut(BaseModel):
+    moved: int
+    # Acc khong chuyen duoc vi cac proxy OK khac da day.
+    stuck: int
+    detail: str
+
+
 class ProxyAttachOut(BaseModel):
     attached: int
     still_missing: int

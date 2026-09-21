@@ -57,3 +57,8 @@ def summary(stats: dict | None) -> str | None:
     if stats.get("avg_s"):
         text += f" · ~{stats['avg_s']}s"
     return text
+
+
+async def reset(proxy_id: uuid.UUID | str) -> None:
+    """Proxy doi dia chi: so lieu tai TikTok cua dia chi cu khong con nghia."""
+    await flags.set_flag(_key(proxy_id), {}, ttl_seconds=1)

@@ -13,10 +13,12 @@ from seeding.api.schemas import (
     DeleteOut,
     Page,
     ProxyAttachOut,
+    ProxyEvacuateOut,
     ProxyImportOut,
     ProxyOut,
     ProxyTestOut,
 )
+from seeding.domain import profiles as profiles_mod
 from seeding.domain.models import Account, Profile, Proxy, ProxyKind, ProxyStatus
 from seeding.ops import proxy_stats, proxylist, proxypool, proxytest
 
@@ -164,6 +166,116 @@ async def test_proxy(proxy_id: uuid.UUID, s: AsyncSession = Depends(get_session)
     return ProxyTestOut(ok=r.ok, exit_ip=r.exit_ip, latency_ms=r.latency_ms, error=r.error)
 
 
+@router.put("/{proxy_id}", response_model=ProxyOut)
+async def replace_proxy_address(
+    proxy_id: uuid.UUID,
+    text: str = Form(...),
+    test: bool = Form(True),
+    s: AsyncSession = Depends(get_session),
+) -> ProxyOut:
+    """Doi dia chi / tai khoan cua mot proxy TAI CHO, giu nguyen cac acc dang gan.
+
+    Proxy thue theo ngay het han la chuyen thuong: nha cung cap giao host:port:user:pass moi.
+    Xoa proxy cu roi dan cai moi thi 5 acc tren do mat proxy; doi tai cho thi chung van o
+    dung "cho" cua minh, chi IP ra la doi (khong tranh duoc khi proxy cu da chet)."""
+    proxy = await s.get(Proxy, proxy_id)
+    if proxy is None:
+        raise HTTPException(404, "Không có proxy này")
+    report = proxylist.parse(text, default_scheme=proxy.scheme or "http")
+    if report.problems or len(report.rows) != 1:
+        detail = report.problems[0].detail if report.problems else "cần đúng MỘT dòng proxy"
+        raise HTTPException(422, f"Không đọc được proxy mới: {detail}")
+    new = report.rows[0]
+    clash = (
+        (
+            await s.execute(
+                select(Proxy).where(
+                    Proxy.host == new.host, Proxy.port == new.port, Proxy.id != proxy_id
+                )
+            )
+        )
+        .unique()
+        .scalar_one_or_none()
+    )
+    if clash is not None:
+        raise HTTPException(409, f"{new.host}:{new.port} đã là proxy {clash.label}")
+    proxy.scheme, proxy.host, proxy.port = new.scheme, new.host, new.port
+    proxy.username = new.username
+    proxy.set_password(new.password)
+    proxy.status = ProxyStatus.UNTESTED
+    proxy.last_error = None
+    proxy.last_exit_ip = None
+    await s.commit()
+    if test:
+        await proxytest.run(proxy)
+        await s.commit()
+    await proxy_stats.reset(proxy.id)
+    out = ProxyOut.model_validate(proxy)
+    handles = (
+        (
+            await s.execute(
+                select(Account.handle)
+                .join(Profile, Profile.account_id == Account.id)
+                .where(Profile.proxy_id == proxy_id)
+                .order_by(Account.handle)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out.bound_handles = list(handles)
+    out.bound_count = len(handles)
+    out.bound_handle = handles[0] if handles else None
+    out.capacity = proxypool.capacity()
+    return out
+
+
+@router.post("/{proxy_id}/evacuate", response_model=ProxyEvacuateOut)
+async def evacuate_proxy(
+    proxy_id: uuid.UUID,
+    reason: str = Form("proxy hỏng"),
+    s: AsyncSession = Depends(get_session),
+) -> ProxyEvacuateOut:
+    """Chuyen moi acc dang gan proxy nay sang cac proxy OK khac con cho (it acc nhat truoc).
+
+    Doi proxy la doi IP cua acc - chi lam khi proxy nay that su chet va khong doi dia chi tai
+    cho duoc. Ly do duoc ghi vao dong thoi gian cua tung acc."""
+    proxy = await s.get(Proxy, proxy_id)
+    if proxy is None:
+        raise HTTPException(404, "Không có proxy này")
+    async with proxypool.assign_lock:
+        pool = await proxypool.build_pool(s)
+        pool._heap = [h for h in pool._heap if h[2].id != proxy_id]
+        import heapq
+
+        heapq.heapify(pool._heap)
+        bound = (
+            (
+                await s.execute(
+                    select(Profile).where(Profile.proxy_id == proxy_id).order_by(Profile.created_at)
+                )
+            )
+            .unique()
+            .scalars()
+            .all()
+        )
+        moved = 0
+        for profile in bound:
+            target = pool.take()
+            if target is None:
+                break
+            await profiles_mod.bind_proxy(
+                s, profile, target, force=True, reason=f"chuyển khỏi {proxy.label}: {reason}"
+            )
+            moved += 1
+        await s.commit()
+    stuck = len(bound) - moved
+    detail = f"Đã chuyển {moved} tài khoản khỏi {proxy.label}"
+    if stuck:
+        detail += f"; {stuck} tài khoản chưa chuyển được vì các proxy khác đã đầy - dán thêm proxy"
+    return ProxyEvacuateOut(moved=moved, stuck=stuck, detail=detail)
+
+
 @router.delete("/{proxy_id}", response_model=DeleteOut)
 async def delete_proxy(proxy_id: uuid.UUID, s: AsyncSession = Depends(get_session)) -> DeleteOut:
     proxy = await s.get(Proxy, proxy_id)
@@ -179,7 +291,7 @@ async def delete_proxy(proxy_id: uuid.UUID, s: AsyncSession = Depends(get_sessio
         raise HTTPException(
             409,
             f"{len(bound)} tài khoản đang gắn proxy này. Xoá là chúng mở trình duyệt bằng IP "
-            "thật của bạn. Đổi proxy cho chúng trước.",
+            "thật của bạn. Bấm “đổi địa chỉ” để thay proxy mới tại chỗ, hoặc “chuyển acc đi”.",
         )
     label = proxy.label
     await s.delete(proxy)

@@ -55,6 +55,12 @@ chỗ. Cái giá của việc dùng chung: 5 acc cùng một IP là một mối 
 được, và một proxy xấu kéo theo cả 5 acc trên nó — đừng dồn các acc quan trọng nhất vào
 chung một proxy.
 
+**Proxy hết hạn hoặc chết.** Proxy thuê theo ngày hết hạn là chuyện thường. Ở tab Proxy mỗi
+dòng có hai nút: **đổi địa chỉ** dán `host:port:user:pass` mới vào đúng proxy đó, các acc đang
+gắn vẫn ở nguyên chỗ, chỉ IP ra là đổi (đây là cách nên dùng khi nhà cung cấp giao proxy mới
+thay cho cái cũ); **chuyển acc đi** dời các acc sang những proxy OK khác còn chỗ, acc nào
+không còn chỗ thì ở lại và được báo rõ. Cả hai đều ghi lý do vào dòng thời gian của acc.
+
 Bấm vào một tài khoản → **Mở trình duyệt**: cửa sổ thật với đúng proxy, cookie, fingerprint
 của acc đó. Đăng nhập tay, giải captcha, xem gì cũng được; đóng cửa sổ là cookie được lưu.
 

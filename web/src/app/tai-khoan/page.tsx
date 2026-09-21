@@ -369,6 +369,38 @@ function ProxyList({ proxies, onChange }: { proxies: Proxy[]; onChange: () => vo
       setBusy(null);
     }
   }
+  async function replaceAddress(p: Proxy) {
+    const line = prompt(
+      `Dán proxy MỚI cho ${p.label} (host:port:user:pass hoặc user:pass@host:port).\n` +
+        `${p.bound_count} tài khoản đang gắn vẫn ở nguyên trên ${p.label}, chỉ IP ra là đổi.`,
+    );
+    if (!line || !line.trim()) return;
+    setBusy(p.id);
+    setError(null);
+    try {
+      await api.put(`/proxies/${p.id}`, undefined, { text: line.trim(), test: true });
+      setNote(`${p.label}: đã đổi địa chỉ và thử lại.`);
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function evacuate(p: Proxy) {
+    if (!confirm(`Chuyển ${p.bound_count} tài khoản khỏi ${p.label} sang các proxy OK khác còn chỗ?\n\nĐổi proxy là đổi IP của acc. Chỉ làm khi ${p.label} thật sự chết và không đổi địa chỉ tại chỗ được.`)) return;
+    setBusy(p.id);
+    setError(null);
+    try {
+      const r = await api.form<{ moved: number; stuck: number; detail: string }>(`/proxies/${p.id}/evacuate`, { reason: "proxy hỏng" });
+      setNote(r.detail);
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
   async function remove(p: Proxy) {
     if (!confirm(`Xoá ${p.label}?`)) return;
     try {
@@ -424,6 +456,14 @@ function ProxyList({ proxies, onChange }: { proxies: Proxy[]; onChange: () => vo
           <button className="btn btn-ghost text-xs" disabled={busy === p.id} onClick={() => test(p)}>
             {busy === p.id ? "đang thử…" : "thử"}
           </button>
+          <button className="btn btn-ghost text-xs" disabled={busy !== null} onClick={() => replaceAddress(p)}>
+            đổi địa chỉ
+          </button>
+          {p.bound_count > 0 && (
+            <button className="btn btn-ghost text-xs text-warn-text" disabled={busy !== null} onClick={() => evacuate(p)}>
+              chuyển acc đi
+            </button>
+          )}
           {p.bound_count === 0 && (
             <button className="btn btn-ghost text-xs text-bad-text" onClick={() => remove(p)}>
               xoá

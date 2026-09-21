@@ -56,8 +56,15 @@ export const api = {
     request<T>(path, { method: "POST", body: body === undefined ? "{}" : JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
-  put: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
+  /** PUT JSON, hoặc PUT form khi truyền `form` (server đọc bằng Form(...)). */
+  put: <T>(path: string, body: unknown, form?: Record<string, string | boolean | number>) => {
+    if (form) {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(form)) fd.append(k, String(v));
+      return request<T>(path, { method: "PUT", body: fd });
+    }
+    return request<T>(path, { method: "PUT", body: JSON.stringify(body) });
+  },
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   /** Form: dùng cho các ô dán (text lớn) — server đọc bằng Form(...). */
   form: <T>(path: string, fields: Record<string, string | boolean | number>) => {
