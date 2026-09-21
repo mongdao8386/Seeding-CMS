@@ -172,7 +172,25 @@ async def timed(label: str, coro):
     return out
 
 
+async def refuse_on_live_data() -> None:
+    """Script nay GHI vao database dang cau hinh: proxy gia trang thai OK se lot vao pool dung
+    chung (acc that co the bi gan vao 10.0.x.x), va activity_tick voi Redis gia se lat job that
+    sang RUNNING ma khong ai chay. Co acc that thi dung lai."""
+    async with SessionLocal() as s:
+        real = (
+            await s.execute(
+                select(func.count()).select_from(Account).where(~Account.handle.like("loadtest_%"))
+            )
+        ).scalar_one()
+    if real:
+        raise SystemExit(
+            f"Database nay dang co {real} tai khoan that - khong chay thu tai o day. Dat "
+            "DATABASE_URL sang mot database trong (vi du ..._test) roi chay lai."
+        )
+
+
 async def main(channels: int, boosters: int) -> None:
+    await refuse_on_live_data()
     print(f"== nap {channels} kenh + {boosters} clone gia")
     await timed("nap du lieu", seed(channels, boosters))
 

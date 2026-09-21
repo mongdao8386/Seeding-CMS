@@ -45,15 +45,24 @@ def _configure() -> tuple[str, str]:
     test_db = url.render_as_string(hide_password=False)
 
     redis = os.environ.get("REDIS_URL") or _from_env_file("REDIS_URL") or DEFAULT_REDIS
-    base = redis.rstrip("/")
-    # bo so db neu co (redis://host:port/0) roi gan db 1
+    # Doi sang mot db Redis KHAC db that: that la N thi test la N+1 (mac dinh 0 -> 1). Giu
+    # nguyen query string (?ssl=..., mat khau nam trong phan netloc nen khong dung toi).
+    base, sep, query = redis.partition("?")
+    base = base.rstrip("/")
     head, _, tail = base.rpartition("/")
+    live_db = 0
     if tail.isdigit() and "://" in head:
-        base = head
-    test_redis = f"{base}/1"
+        base, live_db = head, int(tail)
+    test_redis = f"{base}/{live_db + 1}{sep}{query}"
 
     os.environ["DATABASE_URL"] = test_db
     os.environ["REDIS_URL"] = test_redis
+    # Moi thu khac trong .env that van song: tat nhung cai co tac dung ra ngoai. Khong thi moi
+    # lan chay pytest la mot loat canh bao Telegram that, va chatbot/LLM that co the bi goi.
+    os.environ["ALERT_WEBHOOK_URL"] = ""
+    os.environ["ALERT_TELEGRAM_CHAT_ID"] = ""
+    os.environ["CHATBOT_ENABLED"] = "false"
+    os.environ["ANTHROPIC_API_KEY"] = ""
     return test_db, test_redis
 
 
