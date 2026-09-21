@@ -452,3 +452,25 @@ def test_header_only_paste_says_how_the_columns_were_understood():
     assert not report.rows
     detail = report.problems[0].detail
     assert "mail_refresh_token" in detail and "backup_email" in detail
+
+
+REAL_COOKIE = (
+    "; ".join(f"k{i}=v{i}%2Cx" for i in range(28)) + "; sessionid=abc123def; ttwid=1|raw|pipe"
+)
+
+
+def test_headerless_rows_with_a_real_cookie_still_split_on_the_pipe():
+    """Cookie that co ~30 dau `;` - nhieu hon han so dau `|` cua dong. Doan dau phan cach
+    bang "dem nhieu nhat" chon nham `;` va ca dong thanh mot o."""
+    line = (
+        f"user5132|Pass@!123|someone@hotmail.com|mailpw|M.C508_BAY.0.U.-tok$en*x!y|{GUID}|"
+        f"kp@getnada.com|{REAL_COOKIE}"
+    )
+    assert bulk.sniff_delimiter(line) == "|"
+    text = line + chr(10) + line.replace("user5132", "user5133")
+    report = bulk.parse(text, default_platform=Platform.TIKTOK)
+    assert report.ok, [p.detail for p in report.problems]
+    assert [r.handle for r in report.rows] == ["user5132", "user5133"]
+    assert report.with_cookies == 2
+    assert report.rows[0].secrets["password"] == "Pass@!123"
+    assert report.rows[0].secrets["mail_client_id"] == GUID

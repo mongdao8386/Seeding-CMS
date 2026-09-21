@@ -240,6 +240,13 @@ def sniff_delimiter(text: str) -> str:
     first = text.lstrip("﻿").splitlines()
     header = first[0] if first else ""
     counts = {d: header.count(d) for d in ("|", "\t", ";", ",")}
+    # File KHONG co dong tieu de thi dong dau la du lieu, va cookie trong do co hang chuc
+    # dau `;` (va ca dau phay) - dem nhieu nhat se chon nham (21/09/2026: acc that dan vao
+    # bi bao "missing: handle"). `|` va tab khong xuat hien tu nhien trong ten cot, mat
+    # khau hay email, nen thay tu 3 cai tro len la dau phan cach that.
+    for strong in ("|", "	"):
+        if counts[strong] >= 3:
+            return strong
     best = max(counts, key=lambda d: counts[d])
     return best if counts[best] else ","
 
