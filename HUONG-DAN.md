@@ -82,10 +82,19 @@ một việc "Đăng nhập" trong hàng đợi, chạy **lần lượt, cách n
 
 - Cửa sổ trình duyệt của profile hiện lên (đúng fingerprint + proxy của acc), máy tự gõ tên
   đăng nhập và mật khẩu đã lưu rồi bấm Đăng nhập.
-- TikTok đòi **mã gửi về email**: máy tự đọc hộp thư bằng `refresh_token` + `client_id`
-  (định dạng acc có OAuth2) và điền mã.
-- Gặp **captcha**: máy **không giải**. Cửa sổ đứng yên chờ bạn tối đa 6 phút; bạn giải xong
-  là luồng chạy tiếp. Không ai giải thì việc đó hẹn lại 45 phút sau. Vì vậy hãy **ngồi gần
+- TikTok hỏi **"Verify it's really you"**: máy tự chọn dòng **Email**. TikTok tự gửi mã (nút
+  "Send code" lúc đó bị khoá và đếm ngược, máy không bấm); máy đọc hộp thư bằng
+  `refresh_token` + `client_id` (định dạng acc có OAuth2), **bỏ qua mã cũ** của lần thử trước,
+  điền mã mới và gửi. Sau 60 giây chưa có thư thì bấm gửi lại mã một lần.
+- **Chạy nền, không giành máy của bạn** (`LOGIN_BACKGROUND=true`): cửa sổ đăng nhập mở ra ở
+  *phía sau* các cửa sổ bạn đang dùng và trả focus về chỗ bạn đang gõ. Bạn cứ Alt+Tab, di
+  chuột, làm việc khác: robot điều khiển trang từ bên trong trình duyệt, không dùng chuột
+  hay bàn phím của máy. Lỡ **thu nhỏ** cửa sổ thì trong 1 giây nó tự bật lại (vẫn nằm sau):
+  Firefox ngừng vẽ cửa sổ bị thu nhỏ và mọi cú bấm sẽ treo. Đừng **đóng** cửa sổ; đóng là
+  lượt đó hỏng và hẹn lại.
+- Gặp **captcha**: máy **không giải**. Cửa sổ **nổi lên trên cùng**, nháy ở thanh tác vụ và
+  kêu một tiếng (vẫn không cướp phím bạn đang gõ), rồi chờ bạn tối đa 6 phút; bạn giải xong
+  là nó lùi về phía sau và luồng chạy tiếp. Không ai giải thì việc đó hẹn lại 45 phút sau. Vì vậy hãy **ngồi gần
   máy** khi các lượt đăng nhập chạy. 80 acc × ~4 phút ≈ 5–6 tiếng, có thể chia nhiều buổi.
 - Xong mỗi acc: cookie được lưu, hệ thống hỏi TikTok xem phiên có sống thật không, và thẻ
   "cần người" của acc đó (nếu có) tự đóng. Sai mật khẩu / acc bị khoá thì dừng hẳn, ghi rõ

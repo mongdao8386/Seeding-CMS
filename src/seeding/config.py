@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     # Khoang cach giua hai luot dang nhap tu dong (phut, cong tru ngau nhien ~30%). Mot loat
     # dang nhap don dap tu mot may la dau vet ro nhat - dung ha xuong duoi 2.
     login_spacing_minutes: int = 4
+    # Cua so dang nhap nam phia sau, khong lay focus; chi noi len khi co captcha.
+    login_background: bool = True
     headless_jobs: bool = True
     # So trinh duyet mo song song trong MOT tien trinh worker (~400-600MB RAM + 1 loi CPU
     # moi cai). Job trinh duyet khong lay duoc cho trong 30 giay thi hen lai vai phut.

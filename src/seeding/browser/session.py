@@ -109,6 +109,14 @@ PROBES: dict[Platform, SessionProbe] = {
 }
 
 
+# Firefox tren Windows NGUNG VE cua so bi cua so khac che (occlusion tracking). Playwright doi
+# hai khung hinh de coi mot phan tu la "dung yen", nen click() treo den het gio ngay khi nguoi
+# van hanh Alt+Tab sang viec khac. Do that 21/09/2026, cua so bi che: rAF 0/giay, click treo;
+# tat pref nay: rAF 60/giay, click 0.09 giay. (Cua so bi THU NHO van dung ve - browser/winfocus
+# lo viec do.) Pref nay trang web khong doc duoc: visibilityState van "visible" ca hai truong hop.
+WINDOW_PREFS = {"widget.windows.window_occlusion_tracking.enabled": False}
+
+
 def launch_options(profile: Profile, *, headless: bool, humanize: bool) -> dict:
     """Tham so mo trinh duyet cho mot profile.
 
@@ -119,6 +127,7 @@ def launch_options(profile: Profile, *, headless: bool, humanize: bool) -> dict:
     options: dict = {
         "headless": headless,
         "humanize": humanize,
+        "firefox_user_prefs": dict(WINDOW_PREFS),
     }
 
     # "auto" = de Camoufox suy ngon ngu tu IP THAT cua proxy, giong nhu no lam voi mui

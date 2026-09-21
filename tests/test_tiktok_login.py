@@ -5,6 +5,7 @@ sai mat khau thi dung han, va hang doi dang nhap xep tung acc cach nhau."""
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from itertools import pairwise
 from types import SimpleNamespace
@@ -50,16 +51,26 @@ class _Locator:
     async def count(self):
         return 1 if self.page.shown(self.selector) else 0
 
+    async def is_enabled(self, timeout=0):
+        return self.selector not in self.page.disabled
+
     async def click(self, **kw):
+        if self.selector in self.page.disabled:
+            raise TimeoutError(f"{self.selector} is disabled")
         self.page.log.append(f"click:{self.selector}")
         self.page.clicked(self.selector)
+
+    async def press(self, key):
+        self.page.log.append(f"press:{key}")
+        if key == "Enter" and self.page.state == "code":
+            self.page._go_home()
 
     async def type(self, ch, delay=0):
         self.page.typed[self.selector] = self.page.typed.get(self.selector, "") + ch
 
 
 class _Page:
-    """May trang thai: form -> (code | captcha | error | home)."""
+    """May trang thai: form -> (chooser -> code | code | captcha | error | home)."""
 
     def __init__(self, after_submit: str):
         self.state = "form"
@@ -69,12 +80,17 @@ class _Page:
         self.url = lb.LOGIN_URL
         self.polls = 0
         self.human_solves_after: int | None = None
+        self.disabled: set[str] = set()
+        self.code_button = True
 
     def visible(self) -> set[str]:
         if self.state == "form":
             return {R.username[0], R.password[0], R.submit[0]}
+        if self.state == "chooser":
+            return {R.verify_email[0]}
         if self.state == "code":
-            return {R.code_input[0], R.code_submit[0]}
+            shown = {R.code_input[0], R.send_code[0]}
+            return shown | {R.code_submit[0]} if self.code_button else shown
         if self.state == "captcha":
             return {R.captcha[0]}
         if self.state == "home":
@@ -99,6 +115,8 @@ class _Page:
                 self._go_home()
             else:
                 self.state = self.after_submit
+        elif self.state == "chooser" and selector == R.verify_email[0]:
+            self.state = "code"
         elif self.state == "code" and selector == R.code_submit[0]:
             self._go_home()
 
@@ -141,7 +159,29 @@ class _Open:
 
 
 async def _sleep(_s):
-    return None
+    await asyncio.sleep(0)  # nhuong vong lap: tac vu canh cua so phai duoc chay
+
+
+class _Minder:
+    """Ghi lai viec sap xep cua so thay vi dung toi cua so that."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+        self.surfaced = False
+
+    def tuck(self):
+        self.calls.append("tuck")
+        self.surfaced = False
+
+    def keep_alive(self):
+        self.calls.append("keep_alive")
+
+    def surface(self):
+        self.calls.append("surface")
+        self.surfaced = True
+
+    async def watch(self, interval: float = 1.0):
+        self.calls.append("watch")
 
 
 def _job(secrets: dict, role=AccountRole.BOOSTER):
@@ -183,7 +223,9 @@ def _stub_finish(monkeypatch):
 async def test_types_the_saved_credentials_and_lands_logged_in():
     page = _Page(after_submit="home")
     opened = _Open(page)
-    res = await lb.run(_NoSession(), _profile(), _job(SECRETS), open=opened, sleep=_sleep)
+    res = await lb.run(
+        _NoSession(), _profile(), _job(SECRETS), open=opened, sleep=_sleep, minder=_Minder()
+    )
     assert res.ok, res.detail
     assert opened.headless is False, "luon co cua so: captcha la viec cua nguoi"
     assert page.typed[R.username[0]] == "user123" and page.typed[R.password[0]] == "Pw@!123"
@@ -199,7 +241,13 @@ async def test_reads_the_email_code_and_types_it(monkeypatch):
         return mailbox.MailCode("482913", "482913 is your code", "TikTok", None, None)
 
     res = await lb.run(
-        _NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep, fetch_code=fetch
+        _NoSession(),
+        _profile(),
+        _job(SECRETS),
+        open=_Open(page),
+        sleep=_sleep,
+        minder=_Minder(),
+        fetch_code=fetch,
     )
     assert res.ok and "mã lấy từ email" in res.detail
     assert page.typed[R.code_input[0]] == "482913" and calls == ["tiktok"]
@@ -208,7 +256,9 @@ async def test_reads_the_email_code_and_types_it(monkeypatch):
 async def test_a_captcha_is_left_for_the_human_and_the_flow_resumes_after():
     page = _Page(after_submit="captcha")
     page.human_solves_after = 3
-    res = await lb.run(_NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep)
+    res = await lb.run(
+        _NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep, minder=_Minder()
+    )
     assert res.ok and "captcha do người giải" in res.detail
     assert not [e for e in page.log if "captcha" in e], "may khong bao gio bam vao captcha"
 
@@ -216,21 +266,34 @@ async def test_a_captcha_is_left_for_the_human_and_the_flow_resumes_after():
 async def test_an_unsolved_captcha_is_retried_later_not_forced():
     page = _Page(after_submit="captcha")
     res = await lb.run(
-        _NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep, human_wait_s=0.2
+        _NoSession(),
+        _profile(),
+        _job(SECRETS),
+        open=_Open(page),
+        sleep=_sleep,
+        minder=_Minder(),
+        human_wait_s=0.2,
     )
     assert not res.ok and res.retryable and "captcha" in res.detail
 
 
 async def test_a_wrong_password_stops_for_good():
     page = _Page(after_submit="error")
-    res = await lb.run(_NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep)
+    res = await lb.run(
+        _NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep, minder=_Minder()
+    )
     assert not res.ok and not res.retryable and "mật khẩu" in res.detail
 
 
 async def test_no_saved_password_never_opens_a_browser():
     page = _Page(after_submit="home")
     res = await lb.run(
-        _NoSession(), _profile(), _job({"username": "u"}), open=_Open(page), sleep=_sleep
+        _NoSession(),
+        _profile(),
+        _job({"username": "u"}),
+        open=_Open(page),
+        sleep=_sleep,
+        minder=_Minder(),
     )
     assert not res.ok and page.log == []
 
@@ -243,6 +306,7 @@ async def test_a_channel_account_without_a_proxy_is_refused():
         _job(SECRETS, role=AccountRole.CHANNEL),
         open=_Open(page),
         sleep=_sleep,
+        minder=_Minder(),
     )
     assert not res.ok and "proxy" in res.detail and page.log == []
 
@@ -416,3 +480,124 @@ async def test_queue_alternates_between_proxies(client):
             await s.commit()
             await s.execute(delete(Proxy).where(Proxy.id.in_(proxy_ids)))
             await s.commit()
+
+
+async def test_the_verify_by_email_chooser_is_clicked_then_the_code_is_typed():
+    """Anh chup 21/09: sau khi bam Log in TikTok hien "Verify it's really you" -> dong Email."""
+    page = _Page(after_submit="chooser")
+    page.disabled.add(R.send_code[0])  # TikTok tu gui ma, nut dang dem nguoc
+
+    async def fetch(secrets, *, platform=None, since_minutes=30):
+        return mailbox.MailCode("135790", "code", "TikTok", None, None)
+
+    res = await lb.run(
+        _NoSession(),
+        _profile(),
+        _job(SECRETS),
+        open=_Open(page),
+        sleep=_sleep,
+        minder=_Minder(),
+        fetch_code=fetch,
+    )
+    assert res.ok, res.detail
+    assert f"click:{R.verify_email[0]}" in page.log
+    assert f"click:{R.send_code[0]}" not in page.log, "nut bi khoa thi khong bam, khong sap"
+    assert page.typed[R.code_input[0]] == "135790"
+
+
+async def test_a_code_left_over_from_an_earlier_attempt_is_not_typed(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    page = _Page(after_submit="code")
+    calls = []
+
+    async def fetch(secrets, *, platform=None, since_minutes=30):
+        calls.append(1)
+        if len(calls) == 1:
+            old = datetime.now(UTC) - timedelta(minutes=8)
+            return mailbox.MailCode("111111", "old", "TikTok", old, None)
+        return mailbox.MailCode("222222", "new", "TikTok", datetime.now(UTC), None)
+
+    clock = [1000.0]
+
+    def monotonic():
+        clock[0] += 6.0  # moi lan hoi gio la 6 giay troi qua: du de thu lai hop thu
+        return clock[0]
+
+    # Chi doi dong ho cua rieng module dang nhap, khong dung toi time.monotonic toan cuc.
+    monkeypatch.setattr(lb, "time", SimpleNamespace(monotonic=monotonic))
+    res = await lb.run(
+        _NoSession(),
+        _profile(),
+        _job(SECRETS),
+        open=_Open(page),
+        sleep=_sleep,
+        minder=_Minder(),
+        fetch_code=fetch,
+        human_wait_s=600,
+    )
+    assert res.ok, res.detail
+    assert page.typed[R.code_input[0]] == "222222" and len(calls) >= 2
+
+
+async def test_without_a_submit_button_the_code_is_sent_with_enter():
+    page = _Page(after_submit="code")
+    page.code_button = False
+
+    async def fetch(secrets, *, platform=None, since_minutes=30):
+        return mailbox.MailCode("246810", "code", "TikTok", None, None)
+
+    res = await lb.run(
+        _NoSession(),
+        _profile(),
+        _job(SECRETS),
+        open=_Open(page),
+        sleep=_sleep,
+        minder=_Minder(),
+        fetch_code=fetch,
+    )
+    assert res.ok and "press:Enter" in page.log
+
+
+async def test_the_window_stays_behind_and_only_comes_up_for_a_captcha():
+    page = _Page(after_submit="captcha")
+    page.human_solves_after = 3
+    minder = _Minder()
+    res = await lb.run(
+        _NoSession(), _profile(), _job(SECRETS), open=_Open(page), sleep=_sleep, minder=minder
+    )
+    assert res.ok
+    assert "watch" in minder.calls, "canh cua so suot phien, khong chi giua cac buoc"
+    minder.calls.remove("watch")
+    assert minder.calls[0] == "tuck", "mo ra la lui ve sau ngay, khong lay focus"
+    first_surface = minder.calls.index("surface")
+    assert "surface" not in minder.calls[:first_surface]
+    assert "keep_alive" in minder.calls[:first_surface], "truoc khi go: cua so khong duoc thu nho"
+
+
+def test_a_covered_window_keeps_rendering():
+    """Do that: khong co pref nay thi Alt+Tab la moi cu bam treo (rAF = 0 khi cua so bi che)."""
+    from seeding.browser.session import launch_options
+
+    options = launch_options(_profile(), headless=False, humanize=True)
+    prefs = options["firefox_user_prefs"]
+    assert prefs["widget.windows.window_occlusion_tracking.enabled"] is False
+
+
+def test_the_device_ban_is_not_recorded_as_a_locked_account():
+    reason, retryable = lb.page_error("Your device was banned.")
+    assert "THIẾT BỊ" in reason and retryable is False
+    assert lb.page_error("Incorrect code. Please try again.")[1] is True
+    assert lb.page_error("Tài khoản hoặc mật khẩu không chính xác")[1] is False
+    assert lb.page_error("Your account is currently suspended.")[0] == "tài khoản đã bị khoá"
+
+
+def test_window_minder_is_inert_when_disabled_or_off_windows():
+    from seeding.browser import winfocus
+
+    minder = winfocus.WindowMinder(set(), enabled=False)
+    minder.tuck()
+    minder.keep_alive()
+    minder.surface()
+    assert minder.windows == set() and minder.surfaced is False
+    assert isinstance(winfocus.browser_windows(), set)
